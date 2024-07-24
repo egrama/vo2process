@@ -10,7 +10,7 @@ rhoATPS = 1.225 # ATP conditions: density based on ambient conditions, dry air
 rhoBTPS = 1.123 # BTPS conditions: density at ambient  pressure, 35°C, 95% humidity
 dry_constant = 287.058 
 wet_constant = 461.495
-o2_max = 20.6  # % of O2 in air
+o2_max = 20.84  # % of O2 in air
 
 # Venturi tube areas
 area_1 = 0.000531 # 26mm diameter (in m2) 
@@ -21,7 +21,9 @@ area_2 = 0.000314 # 20mm diameter (in m2)
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/3-rest-emil-25.5C-88humquest-964hPa.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/4-130bpm-25c-963hpa-77hum.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/pompa-eu.csv'
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/emil-rest-27g- 56hum-963atm.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/emil-rest-27g- 56hum-963atm.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/xaa'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/salavlad.csv'
 
 
 def calc_volumetric_flow(diff_pressure, rho):
@@ -113,8 +115,8 @@ if __name__ == '__main__':
 
 
   result = calc_vol_o2(
-    calc_rho(27, 58, 96300), 
-    calc_rho(35, 95, 96300),
+    calc_rho(27, 54, 96662), 
+    calc_rho(35, 95, 96662),
     df
     )
   print(result)
@@ -133,8 +135,15 @@ if __name__ == '__main__':
   print(f'VolIn/Volout:  {result[0]/result[1]}')
   print(f'MassIn/MassOut:  {result[4]/result[5]}')
 
+  print(df['dpIn'].max())
+  print(df['dpOut'].max())
+  print(df['millis_diff'].max())
+  print(df['o2'].max())
+  print(df.index.max())
+  max_index = df['millis_diff'].idxmax()
 
   plt.figure(figsize=(12,6))
-  plt.plot(df.index, df['dpIn'], 'r',  label='dpIn')
-  plt.plot(df.index, df['dpOut'], 'b',  label='dpOut')
+  plt.plot(df.index - 204206, df['dpIn'], 'r',  label='dpIn')
+  plt.plot(df.index - 204206, df['dpOut'], 'b',  label='dpOut')
+  # plt.plot(df.index - 204206, df['o2'], 'g',  label='O2')
   plt.show()
