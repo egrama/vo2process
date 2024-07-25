@@ -5,6 +5,7 @@ import pandas as pd
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+from io import StringIO
 
 # Air density constants
 rhoSTPD = 1.292 # STPD conditions: density at 0°C, MSL, 1013.25 hPa, dry air (in kg/m3)
@@ -88,7 +89,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
         mass_o2_out += mass_out * row['o2'] / 100
       else:
         debug_count += 1
-  logging.debug('Ignored samples with both pressures positive:', debug_count)
+    logging.debug(f'Ignored samples with both pressures positive: {debug_count}')
       # rez = add_row(rez, millis, vol_in, vol_out, o2_in_stpd, o2_out_stpd, o2_in_stpd - o2_out_stpd)
   
   # plt.figure(figsize=(12,6))
@@ -140,6 +141,40 @@ def rolling_window(df, window_size_sec, func, *args):
     return results
 
 
+# Split CSV in 2 sections - ambient constants and flow entries
+def split_csv(csv_file):
+    with open(csv_file, 'r') as file:
+        lines = file.readlines()
+    
+    part1 = []
+    part2 = []
+    in_part1 = True
+    
+    for line_number, line in enumerate(lines, 1):
+        fields = line.strip().split(',')
+        if in_part1:
+            if len(fields) == 8:
+                part1.append(line)
+            elif len(fields) == 6:
+                in_part1 = False
+                part2.append(line)
+            else:
+                raise ValueError(f"Line {line_number} has {len(fields)} fields, expected 8 for first section")
+        else:
+            if len(fields) == 6:
+                part2.append(line)
+            else:
+                raise ValueError(f"Line {line_number} has {len(fields)} fields, expected 6 for second section")
+    
+    if not part2:
+        raise ValueError("Second section (with 6 fields) not found in CSV file")
+    
+    #logging.debug(f"Last line of part1: {part1[-1].strip()}")
+    #logging.debug(f"First line of part2: {part2[0].strip()}")
+    
+    return part1, part2
+
+
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('csv_file', nargs='?', default=default_csv_file)
@@ -149,7 +184,12 @@ if __name__ == '__main__':
 
   setup_logging(args.log)
   csv_file = args.csv_file
-  df = pd.read_csv(csv_file, 
+
+  # Split the CSV file
+  # TODO: parse first section for ambient parameters
+  _, part2 = split_csv(csv_file)
+  csv_data = StringIO(''.join(part2))
+  df = pd.read_csv(csv_data, 
                   names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2'],
                   dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64})
   df.set_index('millis', inplace=True)
