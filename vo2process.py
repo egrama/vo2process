@@ -60,46 +60,26 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
   vol_total_out = 0
   o2_in_stpd = 0
   o2_out_stpd = 0
-  mass_total_in = 0
-  mass_total_out = 0
-  mass_o2_in = 0
-  mass_o2_out = 0
 
   debug_count = 0
-  
-  # rez = pd.DataFrame(columns=['millis', 'vol_in', 'vol_out', 'o2_in', 'o2_out', 'o2_diff' ])
-  # rez.set_index('millis', inplace=True)
   for millis, row in dframe.iterrows():
     if not (row['dpIn'] > 0 and row['dpOut'] > 0):
       if row['dpIn'] > 0:
         vol_in = calc_volumetric_flow(row['dpIn'], rhoIn) * row['millis_diff']
         vol_total_in += vol_in
         o2_in_stpd += normalize_to_stpd(vol_in * o2_max / 100,  rhoIn)
-        # do for mass
-        mass_in = calc_mass_flow(row['dpIn'], rhoIn) * row['millis_diff'] / 1000
-        mass_total_in += mass_in
-        mass_o2_in += mass_in * o2_max / 100
       if row['dpOut'] > 0:
         vol_out = calc_volumetric_flow(row['dpOut'], rhoOut) * row['millis_diff']
         vol_total_out += vol_out
         o2_out_stpd += normalize_to_stpd(vol_out * row['o2'] / 100,  rhoOut)
-        # do for mass
-        mass_out = calc_mass_flow(row['dpOut'], rhoOut) * row['millis_diff'] / 1000
-        mass_total_out += mass_out
-        mass_o2_out += mass_out * row['o2'] / 100
       else:
         debug_count += 1
     logging.debug(f'Ignored samples with both pressures positive: {debug_count}')
-      # rez = add_row(rez, millis, vol_in, vol_out, o2_in_stpd, o2_out_stpd, o2_in_stpd - o2_out_stpd)
-  
-  # plt.figure(figsize=(12,6))
-  # plt.plot(rez.index, rez['o2_diff'], label='O2-diff')
-  # plt.show()
-  
-  return vol_total_in, vol_total_out, o2_in_stpd, o2_out_stpd, mass_total_in, mass_total_out, mass_o2_in, mass_o2_out
-  
+  vol_total_in_stpd =  normalize_to_stpd(vol_total_in,  rhoIn)  
+  vol_total_out_stpd = normalize_to_stpd(vol_total_out, rhoOut)
 
-# STPD normalization
+  return vol_total_in, vol_total_out, o2_in_stpd, o2_out_stpd
+
 def normalize_to_stpd(volume, rho_actual):
     return volume * rho_actual / rhoSTPD
 
@@ -136,7 +116,7 @@ def rolling_window(df, window_size_sec, func, *args):
             result = func(*(args + (window_df,)))
             results.append((start_time, result))
         
-        start_time += 1000  # Move the window by 1 second (1000 milliseconds)
+        start_time += window_size_shift_ms  # Move the window by it (befault 1000)
     
     return results
 
@@ -199,6 +179,7 @@ if __name__ == '__main__':
 
   # Define the rolling window size in seconds
   window_size_sec = 30
+  window_size_shift_ms = 30000 #ms
 
   # Calculate rho values
   rho_in = calc_rho(27, 54, 96662)
@@ -282,20 +263,14 @@ if __name__ == '__main__':
   print('Minutes:', minutes)
   print(f'VO2: {round(vo2/minutes)} ml/min')
 
-
-# Calculate VO2 from mass flow
-  mass_o2 = (result[6] - result[7]) 
-  print(f'VO2_from_mass: {mass_o2/rhoSTPD/minutes}')
-
   print(f'VolIn/Volout:  {result[0]/result[1]}')
-  print(f'MassIn/MassOut:  {result[4]/result[5]}')
 
-  print(df['dpIn'].max())
-  print(df['dpOut'].max())
-  print(df['millis_diff'].max())
-  print(df['o2'].max())
-  print(df.index.max())
-  max_index = df['millis_diff'].idxmax()
+  # print(df['dpIn'].max())
+  # print(df['dpOut'].max())
+  # print(df['millis_diff'].max())
+  # print(df['o2'].max())
+  # print(df.index.max())
+  # max_index = df['millis_diff'].idxmax()
 
   plt.figure(figsize=(12,6))
   plt.plot(df.index - 204206, df['dpIn'], 'r',  label='dpIn')
