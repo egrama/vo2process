@@ -238,11 +238,28 @@ if __name__ == '__main__':
 
   # Apply moving average smoothing
   vo2_values_smooth = pd.Series(vo2_values).rolling(window=smoothing_window, center=True).mean()
+
+  # Convert start_times to seconds relative to the first timestamp
+  start_times_sec = [(t - start_times[0]) / 1000 for t in start_times]
+
   # Plot vo2_per_minute / 80 against start_time
   plt.figure(figsize=(12, 6))
   plt.plot(start_times[plot_start_index:], vo2_values[plot_start_index:], label='Raw data', alpha=0.5)
   plt.plot(start_times[plot_start_index:], vo2_values_smooth[plot_start_index:], label='Smoothed', color='red')
-  plt.xlabel('Start Time (ms)')
+
+ # Set x-axis ticks and labels
+  plot_start_time = start_times_sec[plot_start_index]
+  plot_end_time = start_times_sec[-1]
+  tick_interval = 60  # 60 seconds between ticks
+  
+  xticks = np.arange(
+      math.ceil(plot_start_time / tick_interval) * tick_interval,
+      plot_end_time,
+      tick_interval
+  )
+  #plt.xticks(xticks, [f'{int(x/60)}:{int(x%60):02d}' for x in xticks])
+
+  plt.xlabel('Time (mm:ss)')
   plt.ylabel('VO2 per minute / 80 (ml/min)')
   plt.title(f'VO2 per minute / 80 over time (last {plot_fraction*100}%)')
   plt.legend()
