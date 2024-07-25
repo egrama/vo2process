@@ -194,7 +194,8 @@ def plot_vo2_per_min(vo2_values, start_times, plot_fraction=1, smoothing_window=
   plt.show()
 
 
-def plot_ve_o2(ve_o2_values, start_times, plot_fraction=1, smoothing_window=10):    # Calculate the start index for plotting
+def plot_ve_o2(ve_o2_values, start_times, plot_fraction=1, smoothing_window=10,
+               legend='VE/VO2 over time'):    # Calculate the start index for plotting
     plot_start_index = int(len(start_times) * (1 - plot_fraction))
 
     # Apply moving average smoothing
@@ -223,8 +224,8 @@ def plot_ve_o2(ve_o2_values, start_times, plot_fraction=1, smoothing_window=10):
     )
     plt.xticks(xticks, [f'{int(x/60)}:{int(x%60):02d}' for x in xticks])
     plt.xlabel('Time (mm:ss)')
-    plt.ylabel('VE/VO2')
-    plt.title(f'VE/VO2 over time (last {plot_fraction*100}%)')
+    plt.ylabel(legend)
+    plt.title(legend)
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.show()
@@ -254,9 +255,9 @@ def plot_full_file_results(rho_in, rho_out, df):
   # max_index = df['millis_diff'].idxmax()
 
   plt.figure(figsize=(12,6))
-  plt.plot(df.index - 204206, df['dpIn'], 'r',  label='dpIn')
-  plt.plot(df.index - 204206, df['dpOut'], 'b',  label='dpOut')
-  # plt.plot(df.index - 204206, df['o2'], 'g',  label='O2')
+  #plt.plot(df.index - 204206, df['dpIn'], 'r',  label='dpIn')
+  #plt.plot(df.index - 204206, df['dpOut'], 'b',  label='dpOut')
+  plt.plot(df.index - 204206, df['o2'], 'g',  label='O2')
   plt.show()
 
 
@@ -282,8 +283,8 @@ if __name__ == '__main__':
   # o2_max = df['o2'].max()
 
   # Define the rolling window size in seconds
-  window_size_sec = 30
-  window_size_shift_ms = 30000 #ms
+  window_size_sec = 60
+  #window_size_shift_ms = 30000 #ms
   window_size_shift_ms = 2000 #ms
 
   # Calculate rho values
@@ -305,6 +306,7 @@ if __name__ == '__main__':
   vo2_values = []
   ve_o2_values = []
   ve_o2_out_values = []
+  vol_in_values = []
   for start_time, result in rolling_results:
       # TODO(): check if this is correct
       vol_o2_in_stpd = result[2]
@@ -313,6 +315,7 @@ if __name__ == '__main__':
       # normalize vol_in to BTPS; result[0] * rho_in / rho_btps 
       ve_o2 = result[0] * rho_in / rho_btps / vo2
       ve_o2_out = result[1] * rho_out / rho_btps / vo2
+      vol_in = result[0] / 1000.0
 
       window_minutes = window_size_sec / 60  # Convert window size to minutes
       vo2_per_minute = vo2 / window_minutes
@@ -321,11 +324,13 @@ if __name__ == '__main__':
       vo2_values.append(vo2_per_minute / 80)  # Divide by 80 as requested
       ve_o2_values.append(ve_o2)
       ve_o2_out_values.append(ve_o2_out)
+      vol_in_values.append(vol_in)
 
       if vo2_per_minute > max_vo2:
         max_vo2 = vo2_per_minute
         max_vo2_start_time = start_time
 
+  plot_ve_o2(vol_in_values, start_times, legend='Vol_in')
   plot_ve_o2(ve_o2_out_values, start_times)
 
   plot_ve_o2(ve_o2_values, start_times)
