@@ -74,7 +74,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
       if row['dpIn'] > 0:
         vol_in = calc_volumetric_flow(row['dpIn'], rhoIn) * row['millis_diff']
         vol_total_in += vol_in
-        o2_in_stpd += vol_in * o2_max / 100  * rhoIn / rhoSTPD
+        o2_in_stpd += normalize_to_stpd(vol_in * o2_max / 100,  rhoIn)
         # do for mass
         mass_in = calc_mass_flow(row['dpIn'], rhoIn) * row['millis_diff'] / 1000
         mass_total_in += mass_in
@@ -82,7 +82,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
       if row['dpOut'] > 0:
         vol_out = calc_volumetric_flow(row['dpOut'], rhoOut) * row['millis_diff']
         vol_total_out += vol_out
-        o2_out_stpd += vol_out * row['o2'] / 100 * rhoOut / rhoSTPD
+        o2_out_stpd += normalize_to_stpd(vol_out * row['o2'] / 100,  rhoOut)
         # do for mass
         mass_out = calc_mass_flow(row['dpOut'], rhoOut) * row['millis_diff'] / 1000
         mass_total_out += mass_out
@@ -213,9 +213,9 @@ if __name__ == '__main__':
   max_vo2_start_time = None
   for start_time, result in rolling_results:
       # TODO(): check if this is correct
-      vol_in_stpd = result[2]
-      vol_out_stpd = result[3]
-      vo2 = vol_in_stpd - vol_out_stpd  # O2 in - O2 out (normalized to STPD)
+      vol_o2_in_stpd = result[2]
+      vol_o2_out_stpd = result[3]
+      vo2 = vol_o2_in_stpd - vol_o2_out_stpd  # O2 in - O2 out (normalized to STPD)
 
       window_minutes = window_size_sec / 60  # Convert window size to minutes
       vo2_per_minute = vo2 / window_minutes
