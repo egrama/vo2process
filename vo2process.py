@@ -26,7 +26,7 @@ area_2 = 0.000314 # 20mm diameter (in m2)
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/pompa-eu.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/emil-rest-27g- 56hum-963atm.csv'
 #default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/xaa'
-default_csv_file = '/Users/vgrpers/github/vo2process/in_files/salavlad.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/salavlad.csv'
 
 
 
@@ -74,7 +74,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
       if row['dpIn'] > 0:
         vol_in = calc_volumetric_flow(row['dpIn'], rhoIn) * row['millis_diff']
         vol_total_in += vol_in
-        o2_in_stpd += vol_in * o2_max / 100  #* rhoIn / rhoSTPD
+        o2_in_stpd += vol_in * o2_max / 100  * rhoIn / rhoSTPD
         # do for mass
         mass_in = calc_mass_flow(row['dpIn'], rhoIn) * row['millis_diff'] / 1000
         mass_total_in += mass_in
@@ -82,7 +82,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
       if row['dpOut'] > 0:
         vol_out = calc_volumetric_flow(row['dpOut'], rhoOut) * row['millis_diff']
         vol_total_out += vol_out
-        o2_out_stpd += vol_out * row['o2'] / 100 #* rhoOut / rhoSTPD
+        o2_out_stpd += vol_out * row['o2'] / 100 * rhoOut / rhoSTPD
         # do for mass
         mass_out = calc_mass_flow(row['dpOut'], rhoOut) * row['millis_diff'] / 1000
         mass_total_out += mass_out
@@ -219,8 +219,8 @@ if __name__ == '__main__':
   vo2_values = []
   for start_time, result in rolling_results:
       # TODO(): check if this is correct
-      vol_in_stpd = normalize_to_stpd(result[2], rho_in)
-      vol_out_stpd = normalize_to_stpd(result[3], rho_out)
+      vol_in_stpd = result[2]
+      vol_out_stpd = result[3]
       vo2 = vol_in_stpd - vol_out_stpd  # O2 in - O2 out (normalized to STPD)
 
       window_minutes = window_size_sec / 60  # Convert window size to minutes
