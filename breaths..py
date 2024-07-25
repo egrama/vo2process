@@ -4,7 +4,7 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/salavlad.csv'
+default_csv_file = '/Users/vgrpers/github/vo2process/in_files/salavlad.csv'
 
 
 csv_file = sys.argv[1] if len(sys.argv) > 1 else default_csv_file

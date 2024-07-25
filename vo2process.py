@@ -1,3 +1,5 @@
+import argparse
+import logging
 import sys
 import pandas as pd
 import math
@@ -22,8 +24,16 @@ area_2 = 0.000314 # 20mm diameter (in m2)
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/4-130bpm-25c-963hpa-77hum.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/pompa-eu.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/emil-rest-27g- 56hum-963atm.csv'
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/xaa'
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/salavlad.csv'
+#default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/xaa'
+default_csv_file = '/Users/vgrpers/github/vo2process/in_files/salavlad.csv'
+
+
+
+def setup_logging(log_level):
+    numeric_level = getattr(logging, log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(f'Invalid log level: {log_level}')
+    logging.basicConfig(level=numeric_level, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 def calc_volumetric_flow(diff_pressure, rho):
@@ -44,6 +54,7 @@ def add_row(dataframe, millis, vol_in, vol_out, o2_in, o2_out, o2_diff):
 
 
 def calc_vol_o2(rhoIn, rhoOut, dframe):
+  logging.debug(f"calc_vol_o2 millis_start: {dframe.index.min()} millis_end: {dframe.index.max()}")
   vol_total_in = 0
   vol_total_out = 0
   o2_in_stpd = 0
@@ -54,6 +65,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
   mass_o2_out = 0
 
   debug_count = 0
+  
   # rez = pd.DataFrame(columns=['millis', 'vol_in', 'vol_out', 'o2_in', 'o2_out', 'o2_diff' ])
   # rez.set_index('millis', inplace=True)
   for millis, row in dframe.iterrows():
@@ -76,7 +88,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
         mass_o2_out += mass_out * row['o2'] / 100
       else:
         debug_count += 1
-  print('Ignored samples with both pressures positive:', debug_count)
+  logging.debug('Ignored samples with both pressures positive:', debug_count)
       # rez = add_row(rez, millis, vol_in, vol_out, o2_in_stpd, o2_out_stpd, o2_in_stpd - o2_out_stpd)
   
   # plt.figure(figsize=(12,6))
@@ -85,6 +97,11 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
   
   return vol_total_in, vol_total_out, o2_in_stpd, o2_out_stpd, mass_total_in, mass_total_out, mass_o2_in, mass_o2_out
   
+
+# STPD normalization
+def normalize_to_stpd(volume, rho_actual):
+    return volume * rho_actual / rhoSTPD
+
 
 def calc_rho(temp_c, humid, pressure):
     # Use simple Tetens equation
@@ -100,11 +117,38 @@ def calc_rho(temp_c, humid, pressure):
     return rho
 
 
-if __name__ == '__main__':
-  #  csv file is the first argument, if empty, use default value
-  csv_file = sys.argv[1] if len(sys.argv) > 1 else default_csv_file
-  # df = pd.read_csv(csv_file, names=['ts', 'type', 'millis', 'dpIn','dpOut', 'o2'])
+def rolling_window(df, window_size_sec, func, *args):
+    results = []
+    
+    # Ensure the index is in milliseconds
+    if df.index.name != 'millis':
+        df = df.reset_index().set_index('millis')
+    
+    start_time = df.index.min()
+    end_time = df.index.max()
+    
+    while start_time + window_size_sec * 1000 <= end_time:
+        window_end = start_time + window_size_sec * 1000  # Convert seconds to milliseconds
+        window_df = df[(df.index >= start_time) & (df.index < window_end)]
+        
+        if not window_df.empty:
+            result = func(*(args + (window_df,)))
+            results.append((start_time, result))
+        
+        start_time += 1000  # Move the window by 1 second (1000 milliseconds)
+    
+    return results
 
+
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument('csv_file', nargs='?', default=default_csv_file)
+  parser.add_argument('--log', default='info', choices=['debug', 'info', 'warning', 'error', 'critical'],
+                        help='Set the logging level (default: info)')
+  args = parser.parse_args()
+
+  setup_logging(args.log)
+  csv_file = args.csv_file
   df = pd.read_csv(csv_file, 
                   names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2'],
                   dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64})
@@ -113,10 +157,37 @@ if __name__ == '__main__':
   df['millis_diff'] = df.index.to_series().diff()
   # o2_max = df['o2'].max()
 
+  # Define the rolling window size in seconds
+  window_size_sec = 30
 
+  # Calculate rho values
+  rho_in = calc_rho(27, 54, 96662)
+  rho_out = calc_rho(35, 95, 96662)
+
+  # Use rolling_window function with calc_vol_o2 and correct arguments
+  rolling_results = rolling_window(df, window_size_sec, calc_vol_o2, rho_in, rho_out)
+  logging.info(f"Number of entries in rolling_results: {len(rolling_results)}")
+ 
+  # Process rolling results
+  max_vo2 = 0
+  max_vo2_start_time = None
+  for start_time, result in rolling_results:
+      # TODO(): check if this is correct
+      vol_in_stpd = normalize_to_stpd(result[2], rho_in)
+      vol_out_stpd = normalize_to_stpd(result[3], rho_out)
+      vo2 = vol_in_stpd - vol_out_stpd  # O2 in - O2 out (normalized to STPD)
+
+      window_minutes = window_size_sec / 60  # Convert window size to minutes
+      vo2_per_minute = vo2 / window_minutes
+      if vo2_per_minute > max_vo2:
+        max_vo2 = vo2_per_minute
+        max_vo2_start_time = start_time
+  print(f'Max VO2 (rolling, STPD): {round(max_vo2)} ml/min')
+  print(f'Max VO2 segment start time: {max_vo2_start_time} ms')
+  
   result = calc_vol_o2(
-    calc_rho(27, 54, 96662), 
-    calc_rho(35, 95, 96662),
+    rho_in, 
+    rho_out,
     df
     )
   print(result)
