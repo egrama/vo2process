@@ -80,6 +80,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
 
   return vol_total_in, vol_total_out, o2_in_stpd, o2_out_stpd
 
+
 def normalize_to_stpd(volume, rho_actual):
     return volume * rho_actual / rhoSTPD
 
@@ -155,78 +156,23 @@ def split_csv(csv_file):
     return part1, part2
 
 
-if __name__ == '__main__':
-  parser = argparse.ArgumentParser()
-  parser.add_argument('csv_file', nargs='?', default=default_csv_file)
-  parser.add_argument('--log', default='info', choices=['debug', 'info', 'warning', 'error', 'critical'],
-                        help='Set the logging level (default: info)')
-  args = parser.parse_args()
-
-  setup_logging(args.log)
-  csv_file = args.csv_file
-
-  # Split the CSV file
-  # TODO: parse first section for ambient parameters
-  _, part2 = split_csv(csv_file)
-  csv_data = StringIO(''.join(part2))
-  df = pd.read_csv(csv_data, 
-                  names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2'],
-                  dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64})
-  df.set_index('millis', inplace=True)
-  # Calculate the time difference between each row
-  df['millis_diff'] = df.index.to_series().diff()
-  # o2_max = df['o2'].max()
-
-  # Define the rolling window size in seconds
-  window_size_sec = 30
-  window_size_shift_ms = 30000 #ms
-
-  # Calculate rho values
-  rho_in = calc_rho(27, 54, 96662)
-  rho_out = calc_rho(35, 95, 96662)
-
-  # Use rolling_window function with calc_vol_o2 and correct arguments
-  rolling_results = rolling_window(df, window_size_sec, calc_vol_o2, rho_in, rho_out)
-  logging.info(f"Number of entries in rolling_results: {len(rolling_results)}")
- 
-  # Parameters
-  plot_fraction = 0.99  # Plot the last quarter of the data
-  smoothing_window = 10  # Number of points for moving average
-
-  # Process rolling results
-  max_vo2 = 0
-  max_vo2_start_time = None
-  start_times = []
-  vo2_values = []
-  for start_time, result in rolling_results:
-      # TODO(): check if this is correct
-      vol_o2_in_stpd = result[2]
-      vol_o2_out_stpd = result[3]
-      vo2 = vol_o2_in_stpd - vol_o2_out_stpd  # O2 in - O2 out (normalized to STPD)
-
-      window_minutes = window_size_sec / 60  # Convert window size to minutes
-      vo2_per_minute = vo2 / window_minutes
-
-      start_times.append(start_time)
-      vo2_values.append(vo2_per_minute / 80)  # Divide by 80 as requested
-
-      if vo2_per_minute > max_vo2:
-        max_vo2 = vo2_per_minute
-        max_vo2_start_time = start_time
-
-   # Calculate the start index for plotting
+def plot_vo2_per_min(vo2_values, start_times, plot_fraction=1, smoothing_window=10):
+ # Calculate the start index for plotting
   plot_start_index = int(len(start_times) * (1 - plot_fraction))
 
   # Apply moving average smoothing
-  vo2_values_smooth = pd.Series(vo2_values).rolling(window=smoothing_window, center=True).mean()
+  vo2_values_smooth = pd.Series(vo2_values).rolling(
+    window=smoothing_window, center=True).mean()
 
   # Convert start_times to seconds relative to the first timestamp
   start_times_sec = [(t - start_times[0]) / 1000 for t in start_times]
 
   # Plot vo2_per_minute / 80 against start_time
   plt.figure(figsize=(12, 6))
-  plt.plot(start_times[plot_start_index:], vo2_values[plot_start_index:], label='Raw data', alpha=0.5)
-  plt.plot(start_times[plot_start_index:], vo2_values_smooth[plot_start_index:], label='Smoothed', color='red')
+  plt.plot(start_times_sec[plot_start_index:],
+    vo2_values[plot_start_index:], label='Raw data', alpha=0.5)
+  plt.plot(start_times_sec[plot_start_index:],
+    vo2_values_smooth[plot_start_index:], label='Smoothed', color='red')
 
  # Set x-axis ticks and labels
   plot_start_time = start_times_sec[plot_start_index]
@@ -239,7 +185,7 @@ if __name__ == '__main__':
       tick_interval
   )
   #plt.xticks(xticks, [f'{int(x/60)}:{int(x%60):02d}' for x in xticks])
-
+  plt.xticks(xticks, [f'{int(x/60)}:{int(x%60):02d}' for x in xticks])
   plt.xlabel('Time (mm:ss)')
   plt.ylabel('VO2 per minute / 80 (ml/min)')
   plt.title(f'VO2 per minute / 80 over time (last {plot_fraction*100}%)')
@@ -247,9 +193,44 @@ if __name__ == '__main__':
   plt.grid(True, alpha=0.3)
   plt.show()
 
-  print(f'Max VO2 (rolling, STPD): {round(max_vo2)} ml/min')
-  print(f'Max VO2 segment start time: {max_vo2_start_time} ms')
-  
+
+def plot_ve_o2(ve_o2_values, start_times, plot_fraction=1, smoothing_window=10):    # Calculate the start index for plotting
+    plot_start_index = int(len(start_times) * (1 - plot_fraction))
+
+    # Apply moving average smoothing
+    ve_o2_values_smooth = pd.Series(ve_o2_values).rolling(
+      window=smoothing_window, center=True).mean()
+
+    # Convert start_times to seconds relative to the first timestamp
+    start_times_sec = [(t - start_times[0]) / 1000 for t in start_times]
+
+    # Plot VE/VO2 against start_time
+    plt.figure(figsize=(12, 6))
+    plt.plot(start_times_sec[plot_start_index:],
+      ve_o2_values[plot_start_index:], label='Raw data', alpha=0.5)
+    plt.plot(start_times_sec[plot_start_index:],
+      ve_o2_values_smooth[plot_start_index:], label='Smoothed', color='red')
+
+    # Set x-axis ticks and labels
+    plot_start_time = start_times_sec[plot_start_index]
+    plot_end_time = start_times_sec[-1]
+    tick_interval = 60  # 60 seconds between ticks
+    
+    xticks = np.arange(
+        math.ceil(plot_start_time / tick_interval) * tick_interval,
+        plot_end_time,
+        tick_interval
+    )
+    plt.xticks(xticks, [f'{int(x/60)}:{int(x%60):02d}' for x in xticks])
+    plt.xlabel('Time (mm:ss)')
+    plt.ylabel('VE/VO2')
+    plt.title(f'VE/VO2 over time (last {plot_fraction*100}%)')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.show()
+
+# Values and graph for the full file and period
+def plot_full_file_results(rho_in, rho_out, df):
   result = calc_vol_o2(
     rho_in, 
     rho_out,
@@ -277,3 +258,80 @@ if __name__ == '__main__':
   plt.plot(df.index - 204206, df['dpOut'], 'b',  label='dpOut')
   # plt.plot(df.index - 204206, df['o2'], 'g',  label='O2')
   plt.show()
+
+
+if __name__ == '__main__':
+  parser = argparse.ArgumentParser()
+  parser.add_argument('csv_file', nargs='?', default=default_csv_file)
+  parser.add_argument('--log', default='info', choices=['debug', 'info', 'warning', 'error', 'critical'],
+                        help='Set the logging level (default: info)')
+  args = parser.parse_args()
+  setup_logging(args.log)
+
+  # Read the CSV file
+  csv_file = args.csv_file
+  # TODO: parse first section for ambient parameters
+  _, part2 = split_csv(csv_file)
+  csv_data = StringIO(''.join(part2))
+  df = pd.read_csv(csv_data, 
+                  names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2'],
+                  dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64})
+  df.set_index('millis', inplace=True)
+  # Calculate the time difference between each row
+  df['millis_diff'] = df.index.to_series().diff()
+  # o2_max = df['o2'].max()
+
+  # Define the rolling window size in seconds
+  window_size_sec = 30
+  window_size_shift_ms = 30000 #ms
+  window_size_shift_ms = 2000 #ms
+
+  # Calculate rho values
+  rho_in = calc_rho(27, 54, 96662)
+  rho_out = calc_rho(35, 95, 96662)
+  rho_test = calc_rho(37, 99,101325)
+  rho_btps = calc_rho(37, 100, 96662)
+
+  # Use rolling_window function with calc_vol_o2 and correct arguments
+  rolling_results = rolling_window(df, window_size_sec, calc_vol_o2, rho_in, rho_out)
+
+  # compute  vol_in / vo2
+  logging.info(f"Number of entries in rolling_results: {len(rolling_results)}")
+ 
+  # Process rolling results
+  max_vo2 = 0
+  max_vo2_start_time = None
+  start_times = []
+  vo2_values = []
+  ve_o2_values = []
+  ve_o2_out_values = []
+  for start_time, result in rolling_results:
+      # TODO(): check if this is correct
+      vol_o2_in_stpd = result[2]
+      vol_o2_out_stpd = result[3]
+      vo2 = vol_o2_in_stpd - vol_o2_out_stpd  # O2 in - O2 out (normalized to STPD)
+      # normalize vol_in to BTPS; result[0] * rho_in / rho_btps 
+      ve_o2 = result[0] * rho_in / rho_btps / vo2
+      ve_o2_out = result[1] * rho_out / rho_btps / vo2
+
+      window_minutes = window_size_sec / 60  # Convert window size to minutes
+      vo2_per_minute = vo2 / window_minutes
+
+      start_times.append(start_time)
+      vo2_values.append(vo2_per_minute / 80)  # Divide by 80 as requested
+      ve_o2_values.append(ve_o2)
+      ve_o2_out_values.append(ve_o2_out)
+
+      if vo2_per_minute > max_vo2:
+        max_vo2 = vo2_per_minute
+        max_vo2_start_time = start_time
+
+  plot_ve_o2(ve_o2_out_values, start_times)
+
+  plot_ve_o2(ve_o2_values, start_times)
+
+  plot_vo2_per_min(vo2_values, start_times)
+  print(f'Max VO2 (rolling, STPD): {round(max_vo2)} ml/min')
+  print(f'Max VO2 segment start time: {max_vo2_start_time} ms')
+  
+  plot_full_file_results(rho_in, rho_out, df)
