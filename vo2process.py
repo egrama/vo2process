@@ -208,9 +208,15 @@ if __name__ == '__main__':
   rolling_results = rolling_window(df, window_size_sec, calc_vol_o2, rho_in, rho_out)
   logging.info(f"Number of entries in rolling_results: {len(rolling_results)}")
  
+  # Parameters
+  plot_fraction = 0.99  # Plot the last quarter of the data
+  smoothing_window = 10  # Number of points for moving average
+
   # Process rolling results
   max_vo2 = 0
   max_vo2_start_time = None
+  start_times = []
+  vo2_values = []
   for start_time, result in rolling_results:
       # TODO(): check if this is correct
       vol_in_stpd = normalize_to_stpd(result[2], rho_in)
@@ -219,9 +225,30 @@ if __name__ == '__main__':
 
       window_minutes = window_size_sec / 60  # Convert window size to minutes
       vo2_per_minute = vo2 / window_minutes
+
+      start_times.append(start_time)
+      vo2_values.append(vo2_per_minute / 80)  # Divide by 80 as requested
+
       if vo2_per_minute > max_vo2:
         max_vo2 = vo2_per_minute
         max_vo2_start_time = start_time
+
+   # Calculate the start index for plotting
+  plot_start_index = int(len(start_times) * (1 - plot_fraction))
+
+  # Apply moving average smoothing
+  vo2_values_smooth = pd.Series(vo2_values).rolling(window=smoothing_window, center=True).mean()
+  # Plot vo2_per_minute / 80 against start_time
+  plt.figure(figsize=(12, 6))
+  plt.plot(start_times[plot_start_index:], vo2_values[plot_start_index:], label='Raw data', alpha=0.5)
+  plt.plot(start_times[plot_start_index:], vo2_values_smooth[plot_start_index:], label='Smoothed', color='red')
+  plt.xlabel('Start Time (ms)')
+  plt.ylabel('VO2 per minute / 80 (ml/min)')
+  plt.title(f'VO2 per minute / 80 over time (last {plot_fraction*100}%)')
+  plt.legend()
+  plt.grid(True, alpha=0.3)
+  plt.show()
+
   print(f'Max VO2 (rolling, STPD): {round(max_vo2)} ml/min')
   print(f'Max VO2 segment start time: {max_vo2_start_time} ms')
   
