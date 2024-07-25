@@ -27,7 +27,7 @@ area_2 = 0.000314 # 20mm diameter (in m2)
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/emil-rest-27g- 56hum-963atm.csv'
 #default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/xaa'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/salavlad.csv'
-
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/fewoutbreathsrest.csv'
 
 
 def setup_logging(log_level):
@@ -41,6 +41,26 @@ def calc_volumetric_flow(diff_pressure, rho):
   # area_1 and area_2 are constants
   mass_flow = 1000 * math.sqrt((abs(diff_pressure) * 2 * rho) / ((1 / (area_2**2)) - (1 / (area_1**2))))  
   return mass_flow / rho # volume/time
+
+
+def calc_volumetric_flow_bot(delta_p, fluid_density):
+    # Calculate the area ratio
+    beta = area_2 / area_1
+    
+    # Calculate the discharge coefficient (Cd)
+    # This is an approximation; for more accuracy, you might need to use empirical data
+    Cd = 1
+    
+    # Calculate the mass flow rate
+    numerator = 2 * delta_p * fluid_density
+    denominator = 1 - beta**4
+    
+    mass_flow = Cd * area_2 * math.sqrt(numerator / denominator) * 1000
+    
+    # Calculate the volumetric flow rate
+    volumetric_flow = mass_flow / fluid_density
+    
+    return volumetric_flow
 
 
 def calc_mass_flow(diff_pressure, rho):
@@ -65,11 +85,11 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
   for millis, row in dframe.iterrows():
     if not (row['dpIn'] > 0 and row['dpOut'] > 0):
       if row['dpIn'] > 0:
-        vol_in = calc_volumetric_flow(row['dpIn'], rhoIn) * row['millis_diff']
+        vol_in = calc_volumetric_flow_bot(row['dpIn'], rhoIn) * row['millis_diff']
         vol_total_in += vol_in
         o2_in_stpd += normalize_to_stpd(vol_in * o2_max / 100,  rhoIn)
       if row['dpOut'] > 0:
-        vol_out = calc_volumetric_flow(row['dpOut'], rhoOut) * row['millis_diff']
+        vol_out = calc_volumetric_flow_bot(row['dpOut'], rhoOut) * row['millis_diff']
         vol_total_out += vol_out
         o2_out_stpd += normalize_to_stpd(vol_out * row['o2'] / 100,  rhoOut)
       else:
