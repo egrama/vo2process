@@ -28,6 +28,7 @@ area_2 = 0.000314 # 20mm diameter (in m2)
 #default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/xaa'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/salavlad.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/fewoutbreathsrest.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/vlad_sala_1.csv'
 
 
 def setup_logging(log_level):
@@ -64,7 +65,7 @@ def calc_volumetric_flow_bot(delta_p, fluid_density):
 
 
 def calc_volumetric_flow_egr(dp, rho):
-  Q = 1000 * area_2 * math.sqrt(  2 * dp / (rho * ( 1 - (area_2 / area_1)**2 )))
+  Q = 1000 * area_2 * math.sqrt(  (2 * dp) / (rho * ( 1 - (area_2 / area_1)**2 )))
   return Q
 
 
@@ -323,10 +324,10 @@ if __name__ == '__main__':
   window_size_shift_ms = 2000 #ms
 
   # Calculate rho values
-  rho_in = calc_rho(27, 54, 96662)
+  rho_in = calc_rho(27, 65, 96162)
   rho_out = calc_rho(35, 95, 96662)
   rho_test = calc_rho(37, 99,101325)
-  rho_btps = calc_rho(37, 100, 96662)
+  rho_btps = calc_rho(37, 100, 96162)
 
   # Use rolling_window function with calc_vol_o2 and correct arguments
   rolling_results = rolling_window(df, window_size_sec, calc_vol_o2, rho_in, rho_out)
