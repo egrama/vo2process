@@ -183,61 +183,59 @@ def split_csv(csv_file):
     return part1, part2
 
 
-def plot_vo2_per_min(vo2_values, start_times, plot_fraction=1, smoothing_window=10):
- # Calculate the start index for plotting
-  plot_start_index = int(len(start_times) * (1 - plot_fraction))
-
-  # Apply moving average smoothing
-  vo2_values_smooth = pd.Series(vo2_values).rolling(
-    window=smoothing_window, center=True).mean()
-
-  # Convert start_times to seconds relative to the first timestamp
-  start_times_sec = [(t - start_times[0]) / 1000 for t in start_times]
-
-  # Plot vo2_per_minute / 80 against start_time
-  plt.figure(figsize=(12, 6))
-  plt.plot(start_times_sec[plot_start_index:],
-    vo2_values[plot_start_index:], label='Raw data', alpha=0.5)
-  plt.plot(start_times_sec[plot_start_index:],
-    vo2_values_smooth[plot_start_index:], label='Smoothed', color='red')
-
- # Set x-axis ticks and labels
-  plot_start_time = start_times_sec[plot_start_index]
-  plot_end_time = start_times_sec[-1]
-  tick_interval = 60  # 60 seconds between ticks
-  
-  xticks = np.arange(
-      math.ceil(plot_start_time / tick_interval) * tick_interval,
-      plot_end_time,
-      tick_interval
-  )
-  #plt.xticks(xticks, [f'{int(x/60)}:{int(x%60):02d}' for x in xticks])
-  plt.xticks(xticks, [f'{int(x/60)}:{int(x%60):02d}' for x in xticks])
-  plt.xlabel('Time (mm:ss)')
-  plt.ylabel('VO2 per minute / 80 (ml/min)')
-  plt.title(f'VO2 per minute / 80 over time (last {plot_fraction*100}%)')
-  plt.legend()
-  plt.grid(True, alpha=0.3)
-  plt.show()
-
-
-def plot_ve_o2(ve_o2_values, start_times, plot_fraction=1, smoothing_window=10,
-               legend='VE/VO2 over time'):    # Calculate the start index for plotting
+def plot_time_series_multi(start_times, *y_data, plot_fraction=1, smoothing_window=10, title='', xlabel='Time (mm:ss)'):
+    # Calculate the start index for plotting
     plot_start_index = int(len(start_times) * (1 - plot_fraction))
-
-    # Apply moving average smoothing
-    ve_o2_values_smooth = pd.Series(ve_o2_values).rolling(
-      window=smoothing_window, center=True).mean()
 
     # Convert start_times to seconds relative to the first timestamp
     start_times_sec = [(t - start_times[0]) / 1000 for t in start_times]
 
-    # Plot VE/VO2 against start_time
+    # Plot data against start_time
+    plt.figure(figsize=(12, 6))
+    
+    for label, y_values in y_data:
+        # Apply moving average smoothing
+        y_values_smooth = pd.Series(y_values).rolling(window=smoothing_window, center=True).mean()
+
+        plt.plot(start_times_sec[plot_start_index:],
+                 y_values[plot_start_index:], label=f'{label} (Raw)', alpha=0.5)
+        plt.plot(start_times_sec[plot_start_index:],
+                 y_values_smooth[plot_start_index:], label=f'{label} (Smoothed)')
+    # Set x-axis ticks and labels
+    plot_start_time = start_times_sec[plot_start_index]
+    plot_end_time = start_times_sec[-1]
+    tick_interval = 60  # 60 seconds between ticks
+    
+    xticks = np.arange(
+        math.ceil(plot_start_time / tick_interval) * tick_interval,
+        plot_end_time,
+        tick_interval
+    )
+    plt.xticks(xticks, [f'{int(x/60)}:{int(x%60):02d}' for x in xticks])
+    plt.xlabel(xlabel)
+    plt.ylabel('Value')
+    plt.title(f'{title} (last {plot_fraction*100}%)')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.show()
+
+
+def plot_time_series(y_values, start_times, y_label, title, plot_fraction=1, smoothing_window=10):
+    # Calculate the start index for plotting
+    plot_start_index = int(len(start_times) * (1 - plot_fraction))
+
+    # Apply moving average smoothing
+    y_values_smooth = pd.Series(y_values).rolling(window=smoothing_window, center=True).mean()
+
+    # Convert start_times to seconds relative to the first timestamp
+    start_times_sec = [(t - start_times[0]) / 1000 for t in start_times]
+
+    # Plot data against start_time
     plt.figure(figsize=(12, 6))
     plt.plot(start_times_sec[plot_start_index:],
-      ve_o2_values[plot_start_index:], label='Raw data', alpha=0.5)
+             y_values[plot_start_index:], label='Raw data', alpha=0.5)
     plt.plot(start_times_sec[plot_start_index:],
-      ve_o2_values_smooth[plot_start_index:], label='Smoothed', color='red')
+             y_values_smooth[plot_start_index:], label='Smoothed', color='red')
 
     # Set x-axis ticks and labels
     plot_start_time = start_times_sec[plot_start_index]
@@ -251,8 +249,8 @@ def plot_ve_o2(ve_o2_values, start_times, plot_fraction=1, smoothing_window=10,
     )
     plt.xticks(xticks, [f'{int(x/60)}:{int(x%60):02d}' for x in xticks])
     plt.xlabel('Time (mm:ss)')
-    plt.ylabel(legend)
-    plt.title(legend)
+    plt.ylabel(y_label)
+    plt.title(f'{title} (last {plot_fraction*100}%)')
     plt.legend()
     plt.grid(True, alpha=0.3)
     plt.show()
@@ -284,6 +282,8 @@ def plot_full_file_results(rho_in, rho_out, df):
   plt.figure(figsize=(12,6))
   #plt.plot(df.index - 204206, df['dpIn'], 'r',  label='dpIn')
   #plt.plot(df.index - 204206, df['dpOut'], 'b',  label='dpOut')
+  plt.plot(df.index - 204206, df['millis_diff'], 'g',  label='millis')
+
   plt.plot(df.index - 204206, df['o2'], 'g',  label='O2')
   plt.show()
 
@@ -308,6 +308,14 @@ if __name__ == '__main__':
   # Calculate the time difference between each row
   df['millis_diff'] = df.index.to_series().diff()
   # o2_max = df['o2'].max()
+
+  # TODO: clean this up; Select only first 14 mins
+  # Select the first 14 minutes of data
+  start_time = df.index.min()
+  end_time = start_time + (14 * 60 * 1000)  # 14 minutes in milliseconds
+  df_14min = df.loc[start_time:end_time]
+  df = df_14min
+
 
   # Define the rolling window size in seconds
   window_size_sec = 60
@@ -334,6 +342,7 @@ if __name__ == '__main__':
   ve_o2_values = []
   ve_o2_out_values = []
   vol_in_values = []
+  vol_out_values = []
   for start_time, result in rolling_results:
       # TODO(): check if this is correct
       vol_o2_in_stpd = result[2]
@@ -343,6 +352,7 @@ if __name__ == '__main__':
       ve_o2 = result[0] * rho_in / rho_btps / vo2
       ve_o2_out = result[1] * rho_out / rho_btps / vo2
       vol_in = result[0] / 1000.0
+      vol_out = result[1] / 1000.0
 
       window_minutes = window_size_sec / 60  # Convert window size to minutes
       vo2_per_minute = vo2 / window_minutes
@@ -352,17 +362,22 @@ if __name__ == '__main__':
       ve_o2_values.append(ve_o2)
       ve_o2_out_values.append(ve_o2_out)
       vol_in_values.append(vol_in)
+      vol_out_values.append(vol_out)
 
       if vo2_per_minute > max_vo2:
         max_vo2 = vo2_per_minute
         max_vo2_start_time = start_time
-
-  plot_ve_o2(vol_in_values, start_times, legend='Vol_in')
-  plot_ve_o2(ve_o2_out_values, start_times)
-
-  plot_ve_o2(ve_o2_values, start_times)
-
-  plot_vo2_per_min(vo2_values, start_times)
+ 
+  plot_time_series_multi(start_times, 
+                       ('vol_in', vol_in_values), 
+                       ('vol_out', vol_out_values),
+                       plot_fraction=1,
+                       smoothing_window=10,
+                       title='Volume In/Out Comparison')
+  plot_time_series(vol_in_values, start_times, 'Vol_in', 'Vol_in' )
+  plot_time_series(ve_o2_out_values, start_times, 'Ve_o2_out', 'Ve_o2_out')
+  plot_time_series(ve_o2_values, start_times, 'Ve_o2', 'Ve_o2')
+  plot_time_series(vo2_values, start_times, 'VO2', 'VO2')
   print(f'Max VO2 (rolling, STPD): {round(max_vo2)} ml/min')
   print(f'Max VO2 segment start time: {max_vo2_start_time} ms')
   
