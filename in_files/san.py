@@ -7,9 +7,9 @@ import numpy as np
 # Read the CSV data
 df = pd.read_csv(sys.argv[1], header=None, names=['Timestamp', 'Type', 'Field3', 'Field4', 'Field5', 'Field6'])
 
-df['Timestamp'] = df['Timestamp'].str.strip()
+# df['Timestamp'] = df['Timestamp'].str.strip()
 # Convert timestamp to datetime
-df['Timestamp'] = pd.to_datetime(df['Timestamp'], format='%H:%M:%S.%f')
+# df['Timestamp'] = pd.to_datetime(df['Timestamp'], format='%H:%M:%S.%f')
 
 # Function to detect outliers using IQR method
 def detect_outliers(data):
