@@ -6,6 +6,8 @@ import math
 import matplotlib.pyplot as plt
 import numpy as np
 from io import StringIO
+from scipy.signal import savgol_filter
+
 
 # Air density constants
 rhoSTPD = 1.292 # STPD conditions: density at 0°C, MSL, 1013.25 hPa, dry air (in kg/m3)
@@ -19,17 +21,22 @@ o2_max = 20.84  # % of O2 in air
 area_1 = 0.000531 # 26mm diameter (in m2) 
 area_2 = 0.000314 # 20mm diameter (in m2)
 
-# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/1-rest-emil_961hPa_25g.csv'
+# Volume correction factor (measured with calibration pump)
+vol_corr = 0.8264
+vol_out_corr = 0.995
+
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/1-rest-emil_961hPa_25g.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/2-rest-vlad-24C_66hum_964hPa.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/3-rest-emil-25.5C-88humquest-964hPa.csv'
-# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/4-130bpm-25c-963hpa-77hum.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/4-130bpm-25c-963hpa-77hum.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/pompa-eu.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/emil-rest-27g- 56hum-963atm.csv'
 #default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/xaa'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/salavlad.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/fewoutbreathsrest.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/bust4_med.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/sample2.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/vlad_sala_1.csv'
-
 
 def setup_logging(log_level):
     numeric_level = getattr(logging, log_level.upper(), None)
@@ -42,8 +49,6 @@ def calc_volumetric_flow(diff_pressure, rho):
   # area_1 and area_2 are constants
   mass_flow = 1000 * math.sqrt((abs(diff_pressure) * 2 * rho) / ((1 / (area_2**2)) - (1 / (area_1**2))))  
   return mass_flow / rho # volume/time
-
-
 def calc_volumetric_flow_bot(delta_p, fluid_density):
     # Calculate the area ratio
     beta = area_2 / area_1
@@ -62,24 +67,13 @@ def calc_volumetric_flow_bot(delta_p, fluid_density):
     volumetric_flow = mass_flow / fluid_density
     
     return volumetric_flow
-
-
 def calc_volumetric_flow_egr(dp, rho):
   Q = 1000 * area_2 * math.sqrt(  (2 * dp) / (rho * ( 1 - (area_2 / area_1)**2 )))
   return Q
-
-
-
-
 def calc_mass_flow(diff_pressure, rho):
   # area_1 and area_2 are constants
   mass_flow = 1000 * math.sqrt((abs(diff_pressure) * 2 * rho) / ((1 / (area_2**2)) - (1 / (area_1**2)))) 
   return mass_flow
-
-
-def add_row(dataframe, millis, vol_in, vol_out, o2_in, o2_out, o2_diff):
-  new_row = pd.DataFrame(({'vol_in': vol_in, 'vol_out': vol_out, 'o2_in': o2_in, 'o2_out': o2_out, 'o2_diff': o2_diff }), index=[millis])
-  return pd.concat([dataframe, new_row])
 
 
 def calc_vol_o2(rhoIn, rhoOut, dframe):
@@ -89,24 +83,33 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
   o2_in_stpd = 0
   o2_out_stpd = 0
 
-  debug_count = 0
   for millis, row in dframe.iterrows():
-    if not (row['dpIn'] > 0 and row['dpOut'] > 0):
-      if row['dpIn'] > 0:
-        vol_in = calc_volumetric_flow_egr(row['dpIn'], rhoIn) * row['millis_diff']
-        vol_total_in += vol_in
-        o2_in_stpd += normalize_to_stpd(vol_in * o2_max / 100,  rhoIn)
-      if row['dpOut'] > 0:
-        vol_out = calc_volumetric_flow_egr(row['dpOut'], rhoOut) * row['millis_diff']
-        vol_total_out += vol_out
-        o2_out_stpd += normalize_to_stpd(vol_out * row['o2'] / 100,  rhoOut)
-      else:
-        debug_count += 1
-    logging.debug(f'Ignored samples with both pressures positive: {debug_count}')
-  vol_total_in_stpd =  normalize_to_stpd(vol_total_in,  rhoIn)  
-  vol_total_out_stpd = normalize_to_stpd(vol_total_out, rhoOut)
-
+    # TODO - lowpri - don't compute escaped In air durin obvious Out breaths 
+    if row['dpIn'] > 0:
+      vol_in = calc_volumetric_flow_egr(row['dpIn'], rhoIn) * row['millis_diff'] * vol_corr
+      vol_total_in += vol_in
+      o2_in_stpd += normalize_to_stpd(vol_in * o2_max / 100,  rhoIn)
+    if row['dpOut'] > 0:
+      vol_out = calc_volumetric_flow_egr(row['dpOut'], rhoOut) * row['millis_diff'] * vol_corr
+      vol_total_out += vol_out
+      o2_out_stpd += normalize_to_stpd(vol_out * row['o2'] / 100,  rhoOut)
   return vol_total_in, vol_total_out, o2_in_stpd, o2_out_stpd
+
+
+def find_breath_limits(dframe, sg_win_lenght=11, sg_polyorder=2):
+  savgol_filtered = savgol_filter(df['oneDp'],
+                                  window_length=sg_win_lenght, polyorder=sg_polyorder)
+# Find indexes where the line changes sign and crosses the x-axis
+  indexes = [0]
+  indexes_ms = [dframe.index[0]]
+  for i in range(len(savgol_filtered)-1):
+    if (savgol_filtered[i] * savgol_filtered[i+1] < 0) and \
+      (i - indexes[-1] > 20): # only consider sign changes that are at least 20 samples apart
+      vi, vo, _, _ = calc_vol_o2(rhoBTPS, rhoBTPS, dframe.loc[indexes_ms[-1]:dframe.index[i]])
+      if vi > 300 or vo > 300: # actual breath volume
+        indexes.append(i)
+        indexes_ms.append(dframe.index[i])
+  return indexes, indexes_ms
 
 
 def normalize_to_stpd(volume, rho_actual):
@@ -257,7 +260,7 @@ def plot_time_series(y_values, start_times, y_label, title, plot_fraction=1, smo
     plt.show()
 
 # Values and graph for the full file and period
-def plot_full_file_results(rho_in, rho_out, df):
+def egr_original_plot(rho_in, rho_out, df):
   result = calc_vol_o2(
     rho_in, 
     rho_out,
@@ -272,6 +275,7 @@ def plot_full_file_results(rho_in, rho_out, df):
   print(f'VO2: {round(vo2/minutes)} ml/min')
 
   print(f'VolIn/Volout:  {result[0]/result[1]}')
+  print(f'VolStpdIn/VolStpdOut:  {(result[0] *rho_in/rhoSTPD) /(result[1]*rho_out/rhoSTPD)}')
 
   # print(df['dpIn'].max())
   # print(df['dpOut'].max())
@@ -281,11 +285,15 @@ def plot_full_file_results(rho_in, rho_out, df):
   # max_index = df['millis_diff'].idxmax()
 
   plt.figure(figsize=(12,6))
-  #plt.plot(df.index - 204206, df['dpIn'], 'r',  label='dpIn')
-  #plt.plot(df.index - 204206, df['dpOut'], 'b',  label='dpOut')
-  plt.plot(df.index - 204206, df['millis_diff'], 'g',  label='millis')
+  plt.plot(df.index, df['dpIn'], 'r',  label='dpIn')
+  plt.plot(df.index, df['dpOut'], 'b',  label='dpOut')
+  # plt.plot(df.index, df['millis_diff'], 'g',  label='millis')
 
-  plt.plot(df.index - 204206, df['o2'], 'g',  label='O2')
+  # plt.plot(df.index, df['o2'], 'g',  label='O2')
+
+  print(df.dpIn.sum())
+  print(df.dpOut.sum())
+
   plt.show()
 
 
@@ -308,26 +316,93 @@ if __name__ == '__main__':
   df.set_index('millis', inplace=True)
   # Calculate the time difference between each row
   df['millis_diff'] = df.index.to_series().diff()
+  # Calculate the signed difference in pressure
+  df['oneDp'] = df['dpIn'] - df['dpOut'] # signed diff pressure
   # o2_max = df['o2'].max()
 
-  # TODO: clean this up; Select only first 14 mins
-  # Select the first 14 minutes of data
-  start_time = df.index.min()
-  end_time = start_time + (14 * 60 * 1000)  # 14 minutes in milliseconds
-  df_14min = df.loc[start_time:end_time]
-  df = df_14min
+  # # TODO: clean this up;
+  # # Select after 12 min
+  # end_time = df.index.min() + (3 * 60 * 1000)  # 14 minutes in milliseconds
+  # start_time = df.index.min() 
+  # df_after_12 = df.loc[start_time:end_time]
+  # df = df_after_12
 
 
   # Define the rolling window size in seconds
   window_size_sec = 60
   #window_size_shift_ms = 30000 #ms
-  window_size_shift_ms = 2000 #ms
+  window_size_shift_ms = 1000 #ms
 
   # Calculate rho values
-  rho_in = calc_rho(27, 65, 96162)
-  rho_out = calc_rho(35, 95, 96662)
+  rho_in = calc_rho(25, 77, 96362)
+  rho_out = calc_rho(35, 95, 96362)
   rho_test = calc_rho(37, 99,101325)
   rho_btps = calc_rho(37, 100, 96162)
+
+  breath_indexes, breath_indexes_ms = find_breath_limits(df)
+  rez_df =  pd.DataFrame(columns=['millis', 'volIn', 'volOut', 'o2InStpd', 'o2OutStpd'])
+  step = 2
+  for i in range(0, len(breath_indexes), step):
+    vi, vo, o2i, o2o = calc_vol_o2(rho_in, rho_out, df.loc[breath_indexes_ms[i-step]:breath_indexes_ms[i]])
+    # TODO: only add volumes which are greater than a minimal breath volume
+    new_row = pd.DataFrame({'millis': [breath_indexes_ms[i]], 'volIn': [vi], 'volOut': [vo], 'o2InStpd': [o2i], 'o2OutStpd': [o2o]})
+    rez_df = pd.concat([rez_df, new_row], ignore_index=True)
+
+  rez_df.set_index('millis', inplace=True)
+  rez_df['millis_diff'] = rez_df.index.to_series().diff()
+  rez_df['vO2'] = (rez_df['o2InStpd'] - rez_df['o2OutStpd'])
+  rez_df['vO2/min/kg'] = ((rez_df['o2InStpd'] - rez_df['o2OutStpd']) * 60000 / rez_df['millis_diff'])/80
+  rez_df['volDifStpd'] = normalize_to_stpd(rez_df['volIn'], rho_in) - normalize_to_stpd(rez_df['volOut'], rho_out)
+  rez_df['volDifProc'] = rez_df['volDifStpd'] / (rez_df['volOut'] + 0.0001)
+  rez_df['Ve_Vo2'] = rez_df['volOut'] / (rez_df['vO2'] + 0.0001)
+  print(rez_df)
+    
+  plt.figure(figsize=(12,6))
+#   plt.scatter(rez_df.index, rez_df['vO2/min/kg'], label='vO2/min/kg')
+#   plt.scatter(rez_df.index, rez_df['Ve_Vo2'], label='Ve_Vo2')
+  plt.scatter(rez_df.index, rez_df['volIn'], label='volIn', color='red')
+#   plt.plot(rez_df.index, rez_df['volIn'], 'b', label='volIn')
+
+
+  # Add horizontal lines every 10 ticks up to 70
+  for i in range(0, 4000, 500):
+    plt.axhline(y=i, color='gray', linestyle='--')
+  plt.show()
+
+  print('ha!')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   # Use rolling_window function with calc_vol_o2 and correct arguments
   rolling_results = rolling_window(df, window_size_sec, calc_vol_o2, rho_in, rho_out)
@@ -352,8 +427,8 @@ if __name__ == '__main__':
       # normalize vol_in to BTPS; result[0] * rho_in / rho_btps 
       ve_o2 = result[0] * rho_in / rho_btps / vo2
       ve_o2_out = result[1] * rho_out / rho_btps / vo2
-      vol_in = result[0] / 1000.0
-      vol_out = result[1] / 1000.0
+      vol_in = normalize_to_stpd(result[0] / 1000.0,  rho_in)
+      vol_out = normalize_to_stpd(result[1] / 1000.0,  rho_out)
 
       window_minutes = window_size_sec / 60  # Convert window size to minutes
       vo2_per_minute = vo2 / window_minutes
@@ -382,4 +457,4 @@ if __name__ == '__main__':
   print(f'Max VO2 (rolling, STPD): {round(max_vo2)} ml/min')
   print(f'Max VO2 segment start time: {max_vo2_start_time} ms')
   
-  plot_full_file_results(rho_in, rho_out, df)
+  egr_original_plot(rho_in, rho_out, df)
