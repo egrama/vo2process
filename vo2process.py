@@ -83,6 +83,8 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
     # Set to 0 negative pressure values and values lower than sensor threshold
     if row['dpIn'] < flow_sensor_threshold: # includes all negative values
       in_pressure = 0
+      if row['dpIn'] < -flow_sensor_threshold:
+        out_pressure += -row['dpIn']
     else:
       in_pressure = row['dpIn']
     if row['dpOut']  < flow_sensor_threshold:
@@ -391,7 +393,7 @@ if __name__ == '__main__':
   df.set_index('millis', inplace=True)
   df['dpSum'] = 0
   # Sanitixe data
-  sanitize_data()
+  # sanitize_data()
 
 
 
@@ -424,7 +426,7 @@ if __name__ == '__main__':
   breath_indexes, breath_indexes_ms = find_breath_limits(df)
   df.loc[breath_indexes_ms, 'BreathMarker'] = True
   breath_mask = df['BreathMarker'] == True
-  step = 2
+  step = 8
 
 
   df['o2'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05).rolling(window=230, center=True).mean()
@@ -463,7 +465,7 @@ if __name__ == '__main__':
 
 
   rez_df =  pd.DataFrame(columns=['millis', 'volIn', 'volOut', 'o2InStpd', 'o2OutStpd'])
-  step = 2
+  step = 8
   for i in range(0, len(breath_indexes) - 1, step):
     vi, vo, o2i, o2o, co2 = calc_vol_o2(rho_in, rho_out, df.loc[breath_indexes_ms[i-step]:breath_indexes_ms[i]])
     # TODO: only add volumes which are greater than a minimal breath volume
@@ -559,7 +561,7 @@ if __name__ == '__main__':
                        smoothing_window=10,
                        title='Volume In/Out Comparison')
   plot_time_series(vol_in_values, start_times, 'Vol_in', 'Vol_in' )
-  plot_time_series(ve_o2_out_values, start_times, 'Ve_o2_out', 'Ve_o2_out')
+  # plot_time_series(ve_o2_out_values, start_times, 'Ve_o2_out', 'Ve_o2_out')
   plot_time_series(ve_o2_values, start_times, 'Ve_o2', 'Ve_o2')
   plot_time_series(vo2_values, start_times, 'VO2', 'VO2')
   print(f'Max VO2 (rolling, STPD): {round(max_vo2)} ml/min')
