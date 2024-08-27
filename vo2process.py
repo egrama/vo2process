@@ -25,11 +25,12 @@ area_2 = 0.000314 # 20mm diameter (in m2)
 vol_corr = 0.8264
 vol_out_corr = 0.995
 
-flow_sensor_threshold = 0.2
+flow_sensor_threshold = 0.32
 
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/1-rest-emil_961hPa_25g.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/vlad_sala_2.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala2_p1.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala2_concat.csv'
 
 def setup_logging(log_level):
     numeric_level = getattr(logging, log_level.upper(), None)
@@ -78,8 +79,6 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
   in_pressure = 0
   out_pressure = 0
   
-
-
   for millis, row in dframe.iterrows():
     # Set to 0 negative pressure values and values lower than sensor threshold
     if row['dpIn'] < flow_sensor_threshold: # includes all negative values
@@ -90,7 +89,6 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
       out_pressure = 0
     else:
       out_pressure = row['dpOut']
-
 
     # TODO - lowpri - don't compute escaped In air during obvious Out breaths 
     if in_pressure > 0:
@@ -391,7 +389,7 @@ if __name__ == '__main__':
                   names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2'],
                   dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64})
   df.set_index('millis', inplace=True)
-
+  df['dpSum'] = 0
   # Sanitixe data
   sanitize_data()
 
@@ -409,7 +407,7 @@ if __name__ == '__main__':
 
 
   # Define the rolling window size in seconds
-  window_size_sec = 30
+  window_size_sec = 60
   #window_size_shift_ms = 30000 #ms
   window_size_shift_ms = 1000 #ms
 
@@ -417,6 +415,8 @@ if __name__ == '__main__':
   rho_in = calc_rho(24, 50, 100490)
   rho_out = calc_rho(35, 95, 100490)
   rho_btps = calc_rho(37, 100, 100490)
+
+
 
   df['BreathMarker'] = False
   computed_columns = ['volIn', 'volOut', 'o2InStpd', 'o2OutStpd', 'co2Stpd']
@@ -463,7 +463,7 @@ if __name__ == '__main__':
 
 
   rez_df =  pd.DataFrame(columns=['millis', 'volIn', 'volOut', 'o2InStpd', 'o2OutStpd'])
-  step = 10
+  step = 2
   for i in range(0, len(breath_indexes) - 1, step):
     vi, vo, o2i, o2o, co2 = calc_vol_o2(rho_in, rho_out, df.loc[breath_indexes_ms[i-step]:breath_indexes_ms[i]])
     # TODO: only add volumes which are greater than a minimal breath volume
@@ -493,7 +493,6 @@ if __name__ == '__main__':
   plt.show()
 
   print('ha!')
-
 
 
 
