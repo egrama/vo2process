@@ -6,3 +6,8 @@ Hypothesis:
   - 4.27 is a max value and can be an error; not sure if it can be added or not.
 Result:
   - minor, if any.
+
+EXP2
+====
+Hypothesis:
+  -  

@@ -15,7 +15,12 @@ rhoATPS = 1.225 # ATP conditions: density based on ambient conditions, dry air
 rhoBTPS = 1.123 # BTPS conditions: density at ambient  pressure, 35°C, 95% humidity
 dry_constant = 287.058 
 wet_constant = 461.495
-o2_max = 21.20  # % of O2 in air
+o2_max = 20.90  # % of O2 in air
+
+
+measured_temp_c = 25.3
+measured_humid_percent = 50
+measured_pressure_hPa = 100490
 
 # Venturi tube areas
 area_1 = 0.000531 # 26mm diameter (in m2) 
@@ -83,8 +88,6 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
     # Set to 0 negative pressure values and values lower than sensor threshold
     if row['dpIn'] < flow_sensor_threshold: # includes all negative values
       in_pressure = 0
-      if row['dpIn'] < -flow_sensor_threshold:
-        out_pressure += -row['dpIn']
     else:
       in_pressure = row['dpIn']
     if row['dpOut']  < flow_sensor_threshold:
@@ -395,9 +398,6 @@ if __name__ == '__main__':
   # Sanitixe data
   # sanitize_data()
 
-
-
-
   # Calculate the time difference between each row
   df['millis_diff'] = df.index.to_series().diff()
   # Calculate the signed difference in pressure
@@ -406,17 +406,15 @@ if __name__ == '__main__':
   o2_max = df['o2'].max()
 
 
-
-
   # Define the rolling window size in seconds
   window_size_sec = 60
   #window_size_shift_ms = 30000 #ms
   window_size_shift_ms = 1000 #ms
 
   # Calculate rho values
-  rho_in = calc_rho(24, 50, 100490)
-  rho_out = calc_rho(35, 95, 100490)
-  rho_btps = calc_rho(37, 100, 100490)
+  rho_in = calc_rho(measured_temp_c, measured_humid_percent, measured_pressure_hPa)
+  rho_out = calc_rho(35, 95, measured_pressure_hPa)
+  rho_btps = calc_rho(37, 100, measured_pressure_hPa)
 
 
 
@@ -426,10 +424,12 @@ if __name__ == '__main__':
   breath_indexes, breath_indexes_ms = find_breath_limits(df)
   df.loc[breath_indexes_ms, 'BreathMarker'] = True
   breath_mask = df['BreathMarker'] == True
-  step = 8
+  step = 2
 
 
-  df['o2'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05).rolling(window=230, center=True).mean()
+  # df['o2'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05).rolling(window=230, center=True).mean()
+  xxx = df['o2'].rolling(window=430, center=True).mean()
+  df['o2'] = xxx.rolling(window=430, center=True).mean()
 
   breath_indexes.append(df.index[-1]) # to process the last section ???
   for i in range(step, len(breath_indexes_ms) - 1, step):
@@ -443,6 +443,7 @@ if __name__ == '__main__':
   df['o2_flat'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05)
   df['o2_roll'] = df['o2'].rolling(window=230, center=True).mean()
 
+  plt.ion()
   plt.figure(figsize=(12,6))
   # plt.plot(df.index, df['o2'], 'red',  label='Oxy')
   plt.axhline(y=0, color='red', linestyle='--')
@@ -450,7 +451,8 @@ if __name__ == '__main__':
 #   plt.plot(df.index, df['o2_flat'], 'grey',  label='Oxyflat')
 #   plt.plot(df.index, df['o2_roll'], 'blue',  label='Oxyroll')
   plt.plot(df.index, df['oneDp'], 'black',  label='DP')
-  plt.show()
+
+  plt.figure(figsize=(12,6))
 #   plt.plot(df.index, df['o2_flat'], 'r',  label='Oxy')
 #   plt.plot(df.index, savgol_filter(df['o2'], window_length=31, polyorder=2), color='pink',  label='Savitzky-Golay')
 #   plt.plot(rez_df.index, rez_df['o2'].ewm(span=21, adjust=False).mean(), 'cyan',  label='O2InStpd')
@@ -460,39 +462,55 @@ if __name__ == '__main__':
   plt.axhline(y=1.5, color='gray', linestyle='--')
 #   for i in range(0, 100, 25):
 #     plt.axhline(y=i, color='gray', linestyle='--')
-  plt.show()
 
 
 
   rez_df =  pd.DataFrame(columns=['millis', 'volIn', 'volOut', 'o2InStpd', 'o2OutStpd'])
-  step = 8
+  step = 2
   for i in range(0, len(breath_indexes) - 1, step):
     vi, vo, o2i, o2o, co2 = calc_vol_o2(rho_in, rho_out, df.loc[breath_indexes_ms[i-step]:breath_indexes_ms[i]])
     # TODO: only add volumes which are greater than a minimal breath volume
-    new_row = pd.DataFrame({'millis': [breath_indexes_ms[i]], 'volIn': [vi], 'volOut': [vo], 'o2InStpd': [o2i], 'o2OutStpd': [o2o]})
+    new_row = pd.DataFrame({'millis': [breath_indexes_ms[i]], 'volIn': [vi], 'volOut': [vo], 'o2InStpd': [o2i], 'o2OutStpd': [o2o], 'co2': [co2]})
     rez_df = pd.concat([rez_df, new_row], ignore_index=True)
 
   rez_df.set_index('millis', inplace=True)
   rez_df['millis_diff'] = rez_df.index.to_series().diff()
   rez_df['vO2'] = (rez_df['o2InStpd'] - rez_df['o2OutStpd'])
-  rez_df['vO2/min/kg'] = ((rez_df['o2InStpd'] - rez_df['o2OutStpd']) * 60000 / rez_df['millis_diff'])/80
+  rez_df['vO2/min/kg'] = ((rez_df['o2InStpd'] - rez_df['o2OutStpd']) * 60000 / rez_df['millis_diff'])/78
   rez_df['volDifStpd'] = normalize_to_stpd(rez_df['volIn'], rho_in) - normalize_to_stpd(rez_df['volOut'], rho_out)
   rez_df['volDifProc'] = rez_df['volDifStpd'] / (rez_df['volOut'] + 0.0001)
   rez_df['Ve_Vo2'] = rez_df['volOut'] / (rez_df['vO2'] + 0.0001)
   print(rez_df)
     
+  # plt.ion()
+
   plt.figure(figsize=(12,6))
   plt.scatter(rez_df.index, rez_df['vO2/min/kg'], label='vO2/min/kg')
+  plt.axhline(y=45, color='gray', linestyle='--')
+  plt.axhline(y=50, color='gray', linestyle='--')
+  plt.title('vO2/min/kg')
 #   plt.scatter(rez_df.index, rez_df['Ve_Vo2'], label='Ve_Vo2')
+
+  plt.figure(figsize=(12,6))
   plt.scatter(rez_df.index, rez_df['volIn'], label='volIn', color='blue')
+  plt.title('volIn')
+  for i in range(0, 6000, 250):
+    plt.axhline(y=i, color='gray', linestyle='--')
 #   plt.scatter(rez_df.index, rez_df['millis_diff'], label='millis_diff', color='pink')
 #   plt.plot(rez_df.index, rez_df['volIn'], 'b', label='volIn')
 
+  # plt.figure(figsize=(12,6))
+  # plt.scatter(rez_df.index, rez_df['co2'], label='co2', color='blue')
+  # plt.title('co2')
+
+  # plt.figure(figsize=(12,6))
+  # plt.scatter(rez_df.index, rez_df['vO2'], label='o2', color='red')
+  # plt.title('O2')
 
   # Add horizontal lines every 10 ticks up to 70
-  for i in range(0, 6000, 250):
-    plt.axhline(y=i, color='gray', linestyle='--')
-  plt.show()
+
+  plt.ioff()
+  plt.show(block=True)
 
   print('ha!')
 
@@ -561,7 +579,7 @@ if __name__ == '__main__':
                        smoothing_window=10,
                        title='Volume In/Out Comparison')
   plot_time_series(vol_in_values, start_times, 'Vol_in', 'Vol_in' )
-  # plot_time_series(ve_o2_out_values, start_times, 'Ve_o2_out', 'Ve_o2_out')
+  plot_time_series(ve_o2_out_values, start_times, 'Ve_o2_out', 'Ve_o2_out')
   plot_time_series(ve_o2_values, start_times, 'Ve_o2', 'Ve_o2')
   plot_time_series(vo2_values, start_times, 'VO2', 'VO2')
   print(f'Max VO2 (rolling, STPD): {round(max_vo2)} ml/min')
