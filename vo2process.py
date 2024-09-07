@@ -9,6 +9,10 @@ from io import StringIO
 from scipy.signal import savgol_filter
 
 
+# Weight of the subject in kg
+weight = 78
+
+
 # Air density constants
 rhoSTPD = 1.292 # STPD conditions: density at 0°C, MSL, 1013.25 hPa, dry air (in kg/m3)
 rhoATPS = 1.225 # ATP conditions: density based on ambient conditions, dry air
@@ -305,7 +309,7 @@ def egr_original_plot(rho_in, rho_out, df):
   # print(df.index.max())
   # max_index = df['millis_diff'].idxmax()
 
-  plt.figure(figsize=(12,6))
+  plt.figure(figsize=(8,4))
   plt.plot(df.index, df['o2ini'], 'r',  label='O2Initial')
 #   plt.plot(df.index, df['dpIn'], 'r',  label='dpIn')
 #   plt.plot(df.index, df['dpOut'], 'b',  label='dpOut')
@@ -318,12 +322,10 @@ def egr_original_plot(rho_in, rho_out, df):
 
   plt.show()
 
-  plt.figure(figsize=(12,6))
+  plt.figure(figsize=(8,4))
   plt.plot(df.index, df['o2'], 'r',  label='O2')
   plt.show()
 
-import pandas as pd
-import numpy as np
 
 def detect_and_flatten_spikes(series, window_size=5, spike_threshold=3):
     # Calculate rolling median and standard deviation
@@ -424,90 +426,84 @@ if __name__ == '__main__':
   breath_indexes, breath_indexes_ms = find_breath_limits(df)
   df.loc[breath_indexes_ms, 'BreathMarker'] = True
   breath_mask = df['BreathMarker'] == True
-  step = 2
+
+  # Up until here we have computed the breath limits 
+  # and marked them in the originaldataframe
 
 
+
+  # How many breaths to process in one group (inhale + exhale = 2 breaths)
+  step = 12
+  #########
+
+
+
+  # Smooth the O2 signal
   # df['o2'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05).rolling(window=230, center=True).mean()
   xxx = df['o2'].rolling(window=430, center=True).mean()
   df['o2'] = xxx.rolling(window=430, center=True).mean()
+  # df['o2_flat'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05)
+  # df['o2_roll'] = df['o2'].rolling(window=230, center=True).mean()
 
+  # Compute vol, o2, co2Stpd for each group of breaths
   breath_indexes.append(df.index[-1]) # to process the last section ???
   for i in range(step, len(breath_indexes_ms) - 1, step):
     df.loc[breath_indexes_ms[i-step], computed_columns] = calc_vol_o2(rho_in, rho_out, df.loc[breath_indexes_ms[i-step]:breath_indexes_ms[i]])
 
-
+  # Take out results in separate dataframe
   rez_df = df[(df['BreathMarker'] == True) & (df['o2InStpd'] > 0)]
 
+  # Compute vo2max and other physiological parameters
+  rez_df['millis_diff'] = rez_df.index.to_series().diff()
+  rez_df['vO2'] = (rez_df['o2InStpd'] - rez_df['o2OutStpd'])
+  rez_df['vO2/min/kg'] = ((rez_df['o2InStpd'] - rez_df['o2OutStpd']) * 60000 / rez_df['millis_diff'])/weight
+  rez_df['volDifStpd'] = normalize_to_stpd(rez_df['volIn'], rho_in) - normalize_to_stpd(rez_df['volOut'], rho_out)
+  rez_df['volDifProc'] = rez_df['volDifStpd'] / (rez_df['volOut'] + 0.0001)
+  rez_df['Ve_Vo2'] = rez_df['volOut'] / (rez_df['vO2'] + 0.000001)
+  rez_df['Ve_Co2'] = rez_df['volOut'] / (rez_df['co2Stpd'] + 0.000001)
+  rez_df['RER'] = rez_df['co2Stpd'] / (rez_df['o2InStpd'] - rez_df['o2OutStpd'])
 
-  
-  df['o2_flat'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05)
-  df['o2_roll'] = df['o2'].rolling(window=230, center=True).mean()
 
+  # Plot the results
   plt.ion()
-  plt.figure(figsize=(12,6))
-  # plt.plot(df.index, df['o2'], 'red',  label='Oxy')
+  plt.figure(figsize=(8,4))
+  plt.title('Differenial Pressure')
   plt.axhline(y=0, color='red', linestyle='--')
-#   plt.plot(df.index, savgol_filter(df['o2'], window_length=31, polyorder=3), color='pink',  label='Savitzky-Golay')
-#   plt.plot(df.index, df['o2_flat'], 'grey',  label='Oxyflat')
-#   plt.plot(df.index, df['o2_roll'], 'blue',  label='Oxyroll')
   plt.plot(df.index, df['oneDp'], 'black',  label='DP')
+  # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
 
-  plt.figure(figsize=(12,6))
-#   plt.plot(df.index, df['o2_flat'], 'r',  label='Oxy')
-#   plt.plot(df.index, savgol_filter(df['o2'], window_length=31, polyorder=2), color='pink',  label='Savitzky-Golay')
-#   plt.plot(rez_df.index, rez_df['o2'].ewm(span=21, adjust=False).mean(), 'cyan',  label='O2InStpd')
-  plt.plot(rez_df.index, (rez_df['co2Stpd'] / (rez_df['o2InStpd'] - rez_df['o2OutStpd'])), label='RER', color='red')
+
+  plt.figure(figsize=(8,4))
+  plt.title('RER')
+  plt.scatter(rez_df.index, rez_df['RER'], label='RER', color='red')
   plt.axhline(y=0.5, color='gray', linestyle='--')
   plt.axhline(y=1, color='gray', linestyle='--')
   plt.axhline(y=1.5, color='gray', linestyle='--')
-#   for i in range(0, 100, 25):
-#     plt.axhline(y=i, color='gray', linestyle='--')
+  # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
 
+  plt.figure(figsize=(8,4))
+  plt.title('Ve_Co2')
+  plt.scatter(rez_df.index, rez_df['Ve_Co2'], label='Ve_Co2', color='black')
+  # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
 
+  plt.figure(figsize=(8,4))
+  plt.title('Ve_Vo2')
+  plt.scatter(rez_df.index, rez_df['Ve_Vo2'], label='Ve_Vo2', color='green')
+  # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
 
-  rez_df =  pd.DataFrame(columns=['millis', 'volIn', 'volOut', 'o2InStpd', 'o2OutStpd'])
-  step = 2
-  for i in range(0, len(breath_indexes) - 1, step):
-    vi, vo, o2i, o2o, co2 = calc_vol_o2(rho_in, rho_out, df.loc[breath_indexes_ms[i-step]:breath_indexes_ms[i]])
-    # TODO: only add volumes which are greater than a minimal breath volume
-    new_row = pd.DataFrame({'millis': [breath_indexes_ms[i]], 'volIn': [vi], 'volOut': [vo], 'o2InStpd': [o2i], 'o2OutStpd': [o2o], 'co2': [co2]})
-    rez_df = pd.concat([rez_df, new_row], ignore_index=True)
-
-  rez_df.set_index('millis', inplace=True)
-  rez_df['millis_diff'] = rez_df.index.to_series().diff()
-  rez_df['vO2'] = (rez_df['o2InStpd'] - rez_df['o2OutStpd'])
-  rez_df['vO2/min/kg'] = ((rez_df['o2InStpd'] - rez_df['o2OutStpd']) * 60000 / rez_df['millis_diff'])/78
-  rez_df['volDifStpd'] = normalize_to_stpd(rez_df['volIn'], rho_in) - normalize_to_stpd(rez_df['volOut'], rho_out)
-  rez_df['volDifProc'] = rez_df['volDifStpd'] / (rez_df['volOut'] + 0.0001)
-  rez_df['Ve_Vo2'] = rez_df['volOut'] / (rez_df['vO2'] + 0.0001)
-  print(rez_df)
-    
-  # plt.ion()
-
-  plt.figure(figsize=(12,6))
-  plt.scatter(rez_df.index, rez_df['vO2/min/kg'], label='vO2/min/kg')
-  plt.axhline(y=45, color='gray', linestyle='--')
-  plt.axhline(y=50, color='gray', linestyle='--')
-  plt.title('vO2/min/kg')
-#   plt.scatter(rez_df.index, rez_df['Ve_Vo2'], label='Ve_Vo2')
-
-  plt.figure(figsize=(12,6))
-  plt.scatter(rez_df.index, rez_df['volIn'], label='volIn', color='blue')
-  plt.title('volIn')
-  for i in range(0, 6000, 250):
+  plt.figure(figsize=(8,4))
+  plt.title('Breath volume(ml)')
+  plt.scatter(rez_df.index, rez_df['volIn']/(step/2), label='Breath volume', color='blue')
+  # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
+  for i in range(1000, 5000, 250):
     plt.axhline(y=i, color='gray', linestyle='--')
-#   plt.scatter(rez_df.index, rez_df['millis_diff'], label='millis_diff', color='pink')
-#   plt.plot(rez_df.index, rez_df['volIn'], 'b', label='volIn')
 
-  # plt.figure(figsize=(12,6))
-  # plt.scatter(rez_df.index, rez_df['co2'], label='co2', color='blue')
-  # plt.title('co2')
-
-  # plt.figure(figsize=(12,6))
-  # plt.scatter(rez_df.index, rez_df['vO2'], label='o2', color='red')
-  # plt.title('O2')
-
-  # Add horizontal lines every 10 ticks up to 70
+  plt.figure(figsize=(8,4))
+  plt.title('vO2/min/kg')
+  plt.scatter(rez_df.index, rez_df['vO2/min/kg'], label='vO2/min/kg')
+  # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
+  plt.axhline(y=45, color='gray', linestyle='--')
+  plt.axhline(y=50, color='gray', linestyle='--')  
 
   plt.ioff()
   plt.show(block=True)
