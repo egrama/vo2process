@@ -22,9 +22,9 @@ wet_constant = 461.495
 o2_max = 20.90  # % of O2 in air
 
 
-measured_temp_c = 25.3
-measured_humid_percent = 50
-measured_pressure_hPa = 100490
+# measured_temp_c = 25.3
+# measured_humid_percent = 50
+# measured_pressure_hPa = 100490
 
 # Venturi tube areas
 area_1 = 0.000531 # 26mm diameter (in m2) 
@@ -389,8 +389,18 @@ if __name__ == '__main__':
 
   # Read the CSV file
   csv_file = args.csv_file
-  # TODO: parse first section for ambient parameters
-  _, part2 = split_csv(csv_file)
+  part1, part2 = split_csv(csv_file)
+  ambient_data = StringIO(''.join(part1))
+  ambient_df = pd.read_csv(ambient_data,
+                          names=['ts', 'intTemp', 'outTemp', 'intPressure', 'outPressure', 'humidity'],
+                          dtype={'intTemp': np.float64, 'outTemp': np.float64, 'intPressure': np.float64, 'outPressure': np.float64, 'humidity': np.float64})
+  ambient_df.set_index('ts', inplace=True)
+
+  # Get tenmperature from the last entry in the ambient data
+  measured_temp_c = ambient_df['outTemp'].iloc[-1]
+  measured_humid_percent = ambient_df['humidity'].iloc[-1]
+  measured_pressure_hPa = (ambient_df['outPressure'].iloc[-1] + ambient_df['intPressure'].iloc[-1])/2
+                           
   csv_data = StringIO(''.join(part2))
   df = pd.read_csv(csv_data, 
                   names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2'],
