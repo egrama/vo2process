@@ -14,7 +14,10 @@ weight = 78
 # How many breaths to process in one group (inhale + exhale = 2 breaths)
 step = 18
   #########
+# Number of times to run a rolling average on the O2 signal
 o2_smoothing_factor = 7;
+
+
 
 
 
@@ -472,7 +475,7 @@ if __name__ == '__main__':
   rez_df['volDifProc'] = rez_df['volDifStpd'] / (rez_df['volOut'] + 0.0001)
   rez_df['Ve_Vo2'] = rez_df['volOut'] / (rez_df['vO2'] + 0.000001)
   rez_df['Ve_Co2'] = rez_df['volOut'] / (rez_df['co2Stpd'] + 0.000001)
-  rez_df['RER'] = rez_df['co2Stpd'] / (rez_df['o2InStpd'] - rez_df['o2OutStpd'])
+  rez_df['RER'] = rez_df['co2Stpd'] * (1 - rez_df['vO2/min/kg']/100 ) / (rez_df['o2InStpd'] - rez_df['o2OutStpd'])
 
 
   # Plot the results
