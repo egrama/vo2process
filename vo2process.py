@@ -11,15 +11,19 @@ from scipy.signal import savgol_filter
 
 # Weight of the subject in kg
 weight = 78
+# How many breaths to process in one group (inhale + exhale = 2 breaths)
+step = 18
+  #########
+o2_smoothing_factor = 7;
+
 
 
 # Air density constants
 rhoSTPD = 1.292 # STPD conditions: density at 0°C, MSL, 1013.25 hPa, dry air (in kg/m3)
-rhoATPS = 1.225 # ATP conditions: density based on ambient conditions, dry air
 rhoBTPS = 1.123 # BTPS conditions: density at ambient  pressure, 35°C, 95% humidity
 dry_constant = 287.058 
 wet_constant = 461.495
-o2_max = 20.90  # % of O2 in air
+# o2_max = 20.95  # % of O2 in air - we are using the maximum sensor measured value
 
 
 # measured_temp_c = 25.3
@@ -32,7 +36,6 @@ area_2 = 0.000314 # 20mm diameter (in m2)
 
 # Volume correction factor (measured with calibration pump)
 vol_corr = 0.8264
-vol_out_corr = 0.995
 
 flow_sensor_threshold = 0.32
 
@@ -108,7 +111,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
       vol_out = calc_volumetric_flow_egr(out_pressure, rhoOut) * row['millis_diff'] * vol_corr
       vol_total_out += vol_out
       o2_out_stpd += normalize_to_stpd(vol_out * row['o2'] / 100,  rhoOut)
-  n2_in_stpd = normalize_to_stpd(vol_total_in , rhoIn) - o2_in_stpd
+  n2_in_stpd = normalize_to_stpd(vol_total_in , rhoIn)*0.9996 - o2_in_stpd 
   co2_out_stpd = normalize_to_stpd(vol_total_out, rhoOut) - o2_out_stpd - n2_in_stpd
   return vol_total_in, vol_total_out, o2_in_stpd, o2_out_stpd, co2_out_stpd
 
@@ -427,6 +430,7 @@ if __name__ == '__main__':
   rho_in = calc_rho(measured_temp_c, measured_humid_percent, measured_pressure_hPa)
   rho_out = calc_rho(35, 95, measured_pressure_hPa)
   rho_btps = calc_rho(37, 100, measured_pressure_hPa)
+  # rho_out = rho_btps
 
 
 
@@ -436,24 +440,21 @@ if __name__ == '__main__':
   breath_indexes, breath_indexes_ms = find_breath_limits(df)
   df.loc[breath_indexes_ms, 'BreathMarker'] = True
   breath_mask = df['BreathMarker'] == True
-
   # Up until here we have computed the breath limits 
   # and marked them in the originaldataframe
 
+  # Plot O2 before smoothing
+  plt.ion()
+  plt.figure(figsize=(8,4))
+  plt.title('O2% initial')
+  plt.plot(df.index, df['o2'], 'red',  label='oxy')
 
 
-  # How many breaths to process in one group (inhale + exhale = 2 breaths)
-  step = 12
-  #########
-
-
-
-  # Smooth the O2 signal
+  # Smooth in place the O2 signal
   # df['o2'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05).rolling(window=230, center=True).mean()
-  xxx = df['o2'].rolling(window=430, center=True).mean()
-  df['o2'] = xxx.rolling(window=430, center=True).mean()
-  # df['o2_flat'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05)
-  # df['o2_roll'] = df['o2'].rolling(window=230, center=True).mean()
+  while o2_smoothing_factor > 0:
+    df['o2'] = df['o2'].rolling(window=430, center=True).mean()
+    o2_smoothing_factor -= 1
 
   # Compute vol, o2, co2Stpd for each group of breaths
   breath_indexes.append(df.index[-1]) # to process the last section ???
@@ -475,12 +476,18 @@ if __name__ == '__main__':
 
 
   # Plot the results
-  plt.ion()
+
   plt.figure(figsize=(8,4))
   plt.title('Differenial Pressure')
-  plt.axhline(y=0, color='red', linestyle='--')
   plt.plot(df.index, df['oneDp'], 'black',  label='DP')
-  # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
+  plt.axhline(y=0, color='red', linestyle='--')
+  # plot a vertical line for each breath marker
+  for i in range(0, len(breath_indexes_ms), 1):
+    plt.axvline(x=breath_indexes_ms[i], color='gray', linestyle='--')
+
+  plt.figure(figsize=(8,4))
+  plt.title('O2%')
+  plt.plot(df.index, df['o2'], 'red',  label='oxy')
 
 
   plt.figure(figsize=(8,4))
