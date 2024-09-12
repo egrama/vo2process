@@ -15,7 +15,7 @@ weight = 78
 step = 18
   #########
 # Number of times to run a rolling average on the O2 signal
-o2_smoothing_factor = 7;
+o2_smoothing_factor = 5;
 
 
 
@@ -475,7 +475,7 @@ if __name__ == '__main__':
   rez_df['volDifProc'] = rez_df['volDifStpd'] / (rez_df['volOut'] + 0.0001)
   rez_df['Ve_Vo2'] = rez_df['volOut'] / (rez_df['vO2'] + 0.000001)
   rez_df['Ve_Co2'] = rez_df['volOut'] / (rez_df['co2Stpd'] + 0.000001)
-  rez_df['RER'] = rez_df['co2Stpd'] * (1 - rez_df['vO2/min/kg']/100 ) / (rez_df['o2InStpd'] - rez_df['o2OutStpd'])
+  rez_df['RER'] = rez_df['co2Stpd'] * (1 - rez_df['vO2/min/kg']/100 ) / (rez_df['o2InStpd'] - rez_df['o2OutStpd']) # added rough correction for bicarbonate buffering
 
 
   # Plot the results
@@ -484,6 +484,7 @@ if __name__ == '__main__':
   plt.title('Differenial Pressure')
   plt.plot(df.index, df['oneDp'], 'black',  label='DP')
   plt.axhline(y=0, color='red', linestyle='--')
+  plt.plot(df.index, df['o2ini'] -15, 'r',  label='O2Initial')
   # plot a vertical line for each breath marker
   for i in range(0, len(breath_indexes_ms), 1):
     plt.axvline(x=breath_indexes_ms[i], color='gray', linestyle='--')
