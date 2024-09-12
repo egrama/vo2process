@@ -15,7 +15,7 @@ weight = 78
 step = 18
   #########
 # Number of times to run a rolling average on the O2 signal
-o2_smoothing_factor = 5;
+o2_smoothing_factor = 0;
 
 
 
@@ -421,6 +421,11 @@ if __name__ == '__main__':
   # Calculate the signed difference in pressure
   df['oneDp'] = df['dpIn'] - df['dpOut'] # signed diff pressure
   df['o2ini'] = df['o2']
+
+  # Change the value of o2 to the value of o2 after 7 rows, to allign with the o2 sensor delay of aprox 226, Does not seen to do much
+  df['o2'] = df['o2'].shift(-7).fillna(method='ffill')
+
+
   o2_max = df['o2'].max()
 
 
