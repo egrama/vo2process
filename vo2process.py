@@ -12,10 +12,10 @@ from scipy.signal import savgol_filter
 # Weight of the subject in kg
 weight = 78
 # How many breaths to process in one group (inhale + exhale = 2 breaths)
-step = 18
+step = 14
   #########
 # Number of times to run a rolling average on the O2 signal
-o2_smoothing_factor = 5;
+o2_smoothing_factor = 0;
 
 
 
@@ -45,7 +45,7 @@ flow_sensor_threshold = 0.32
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/1-rest-emil_961hPa_25g.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/vlad_sala_2.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala2_p1.csv'
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala2_concat.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala3_obo_temp.csv'
 
 def setup_logging(log_level):
     numeric_level = getattr(logging, log_level.upper(), None)
@@ -195,16 +195,16 @@ def split_csv(csv_file):
         if in_part1:
             if len(fields) == 8:
                 part1.append(line)
-            elif len(fields) == 6:
+            elif len(fields) == 7:
                 in_part1 = False
                 part2.append(line)
             else:
                 raise ValueError(f"Line {line_number} has {len(fields)} fields, expected 8 for first section")
         else:
-            if len(fields) == 6:
+            if len(fields) == 7:
                 part2.append(line)
             else:
-                raise ValueError(f"Line {line_number} has {len(fields)} fields, expected 6 for second section")
+                raise ValueError(f"Line {line_number} has {len(fields)} fields, expected 7 for second section")
     
     if not part2:
         raise ValueError("Second section (with 6 fields) not found in CSV file")
@@ -409,8 +409,8 @@ if __name__ == '__main__':
                            
   csv_data = StringIO(''.join(part2))
   df = pd.read_csv(csv_data, 
-                  names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2'],
-                  dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64})
+                  names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2', 'intTemp'],
+                  dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64, 'intTemp': np.float64})
   df.set_index('millis', inplace=True)
   df['dpSum'] = 0
   # Sanitixe data
