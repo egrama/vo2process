@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from io import StringIO
 from scipy.signal import savgol_filter
+import json
 
 
 # Weight of the subject in kg
@@ -45,6 +46,7 @@ flow_sensor_threshold = 0.32
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/1-rest-emil_961hPa_25g.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/vlad_sala_2.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala2_p1.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/outsideair.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala3_obo_temp.csv'
 
 def setup_logging(log_level):
@@ -180,6 +182,23 @@ def rolling_window(df, window_size_sec, func, *args):
     
     return results
 
+
+def import_technogym(file):
+  # File structure is described in technogym_export_structure.txt
+  with open (file) as f:
+    data = json.load(f)
+  hr_data = data['data']['analitics']['hr']
+  hr_df = pd.DataFrame(hr_data)
+
+  equipment_data = data['data']['analitics']['samples']
+  flattened_samples = []
+  for sample in equipment_data:
+    flattened_sample = sample['vs'] + [sample['t']]
+    flattened_samples.append(flattened_sample)
+  quipment_df = pd.DataFrame(flattened_samples, columns=['power', 'rpm', 'distance', 'level', 't'])
+  merged_df = pd.merge(quipment_df, hr_df, on='t')
+  merged_df.set_index('t', inplace=True)
+  return merged_df
 
 # Split CSV in 2 sections - ambient constants and flow entries
 def split_csv(csv_file):
@@ -393,6 +412,10 @@ if __name__ == '__main__':
   args = parser.parse_args()
   setup_logging(args.log)
 
+  bike_data = import_technogym('/Users/egrama/vo2max/vo2process/in_files/esala3.json')
+
+
+
   # Read the CSV file
   csv_file = args.csv_file
   part1, part2 = split_csv(csv_file)
@@ -408,6 +431,32 @@ if __name__ == '__main__':
   measured_pressure_hPa = (ambient_df['outPressure'].iloc[-1] + ambient_df['intPressure'].iloc[-1])/2
                            
   csv_data = StringIO(''.join(part2))
+
+
+  # try:
+  #   cnt = 1
+  #   for chunk in pd.read_csv(csv_data, 
+  #                 names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2', 'intTemp'],
+  #                 dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64, 'intTemp': np.float64},
+  #                 chunksize=10):
+  #     print(cnt)
+  #     cnt+=1
+      
+  # except  ValueError as e:
+  #   print(f"Error processing chunk: {e}")
+  #   # Identify the problematic line
+  #   for i, row in chunk.iterrows():
+  #       try:
+  #           float(row['millis'])
+  #       except ValueError:
+  #           print(f"Error in row {i}: {row}")
+  #           break
+
+
+
+
+
+
   df = pd.read_csv(csv_data, 
                   names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2', 'intTemp'],
                   dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64, 'intTemp': np.float64})
@@ -525,6 +574,24 @@ if __name__ == '__main__':
   # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
   plt.axhline(y=45, color='gray', linestyle='--')
   plt.axhline(y=50, color='gray', linestyle='--')  
+
+  filtered_temp = df[df['intTemp'] <= 60]
+  plt.figure(figsize=(8,4))
+  plt.title('Internal Temperature')
+  plt.plot(filtered_temp.index, filtered_temp['intTemp'], label='intTemp', color='coral')
+  plt.plot(df.index, df['o2'], 'red',  label='oxy')
+
+  # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
+
+
+  plt.figure(figsize=(8,4))
+  plt.title('Power(red) and HR(grey)')
+  plt.plot(bike_data.index, bike_data['power'], label='Power', color='grey')
+  plt.plot(bike_data.index, bike_data['hr'], label='HR', color='red')
+  plt.axhline(y=75, color='black', linestyle='--')
+  plt.axhline(y=100, color='black', linestyle='--')
+  plt.axhline(y=125, color='black', linestyle='--')
+
 
   plt.ioff()
   plt.show(block=True)

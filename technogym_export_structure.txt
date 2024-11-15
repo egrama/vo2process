@@ -1,0 +1,22 @@
+{
+  "data": {
+    "analitics": {
+      "hr": [
+        {"hr": 87, "t": 1},
+        {"hr": 88, "t": 2}
+      ]
+    },
+    "samples": [
+      {"vs": [0.0, 0.0, 0.0, 1.0], "t": 1},
+      {"vs": [0.0, 0.0, 0.0, 1.0], "t": 2}
+    ]
+  }
+}
+
+0 = {'i': 0, 'pr': {'name': 'Power', 'um': 'Watt'}}
+1 = {'i': 1, 'pr': {'name': 'Rpm', 'um': 'Rpm'}}
+2 = {'i': 2, 'pr': {'name': 'HDistance', 'um': 'Meter'}}
+3 = {'i': 3, 'pr': {'name': 'Level', 'um': 'Number'}}
+
+
+Time is in seconds
