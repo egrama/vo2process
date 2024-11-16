@@ -47,7 +47,9 @@ default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/1-rest-emil_961hPa_
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/vlad_sala_2.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala2_p1.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/outsideair.csv'
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala3_obo_temp.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/esala3_obo_temp.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/esala4_nesomn_nov_15_24.csv'
+bike_file = default_csv_file.split('.')[0] + '.json'
 
 def setup_logging(log_level):
     numeric_level = getattr(logging, log_level.upper(), None)
@@ -212,15 +214,16 @@ def split_csv(csv_file):
     for line_number, line in enumerate(lines, 1):
         fields = line.strip().split(',')
         if in_part1:
-            if len(fields) == 8:
+            if len(fields) == 8 and fields[1].strip() == 'TTPPH':
                 part1.append(line)
-            elif len(fields) == 7:
+            elif len(fields) == 10 and fields[1].strip() == 'mppoctht':
                 in_part1 = False
                 part2.append(line)
             else:
-                raise ValueError(f"Line {line_number} has {len(fields)} fields, expected 8 for first section")
+                raise ValueError(f"Line {line_number} has {len(fields)} fields, \
+                                 expected 8 for first section and 10 for the second")
         else:
-            if len(fields) == 7:
+            if len(fields) == 10:
                 part2.append(line)
             else:
                 raise ValueError(f"Line {line_number} has {len(fields)} fields, expected 7 for second section")
@@ -458,8 +461,8 @@ if __name__ == '__main__':
 
 
   df = pd.read_csv(csv_data, 
-                  names=['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2', 'intTemp'],
-                  dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64, 'intTemp': np.float64})
+                  names = ['ts', 'type', 'millis', 'dpIn', 'dpOut', 'o2', 'mCo2', 'co2Temp', 'co2Hum', 'intTemp'],
+                  dtype={'millis': np.float64, 'dpIn': np.float64, 'dpOut': np.float64, 'o2': np.float64, 'mCo2': np.float64, 'co2Temp': np.float64, 'co2Hum': np.float64, 'intTemp': np.float64})
   df.set_index('millis', inplace=True)
   df['dpSum'] = 0
   # Sanitixe data
@@ -529,6 +532,7 @@ if __name__ == '__main__':
 
   # Plot the results
 
+
   plt.figure(figsize=(8,4))
   plt.title('Differenial Pressure')
   plt.plot(df.index, df['oneDp'], 'black',  label='DP')
@@ -577,9 +581,11 @@ if __name__ == '__main__':
 
   filtered_temp = df[df['intTemp'] <= 60]
   plt.figure(figsize=(8,4))
-  plt.title('Internal Temperature')
+  plt.title('IntTem/O2/C02conc')
   plt.plot(filtered_temp.index, filtered_temp['intTemp'], label='intTemp', color='coral')
   plt.plot(df.index, df['o2'], 'red',  label='oxy')
+  plt.plot(df.index, df['mCo2'], 'blue',  label='co2')
+
 
   # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
 
@@ -597,9 +603,6 @@ if __name__ == '__main__':
   plt.show(block=True)
 
   print('ha!')
-
-
-
 
   # Use rolling_window function with calc_vol_o2 and correct arguments
   rolling_results = rolling_window(df, window_size_sec, calc_vol_o2, rho_in, rho_out)
