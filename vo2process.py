@@ -518,6 +518,8 @@ if __name__ == '__main__':
 
   # Take out results in separate dataframe
   rez_df = df[(df['BreathMarker'] == True) & (df['o2InStpd'] > 0)]
+  breaths_df = df[df['BreathMarker'] == True]
+  breaths_df['rf'] = 60000 / (breaths_df.index.astype(int).diff(periods=2)) # respiratory frequency (breaths per minute)
 
   # Compute vo2max and other physiological parameters
   rez_df['millis_diff'] = rez_df.index.to_series().diff()
@@ -530,9 +532,8 @@ if __name__ == '__main__':
   rez_df['RER'] = rez_df['co2Stpd'] * (1 - rez_df['vO2/min/kg']/100 ) / (rez_df['o2InStpd'] - rez_df['o2OutStpd']) # added rough correction for bicarbonate buffering
 
 
+
   # Plot the results
-
-
   plt.figure(figsize=(8,4))
   plt.title('Differenial Pressure')
   plt.plot(df.index, df['oneDp'], 'black',  label='DP')
@@ -597,6 +598,11 @@ if __name__ == '__main__':
   plt.axhline(y=75, color='black', linestyle='--')
   plt.axhline(y=100, color='black', linestyle='--')
   plt.axhline(y=125, color='black', linestyle='--')
+
+
+  plt.figure(figsize=(8,4))
+  plt.scatter(breaths_df.index, breaths_df['rf'].rolling(window=5).mean(), color='green',  label='RF')
+  plt.title('Respiratory Frequency')
 
 
   plt.ioff()
