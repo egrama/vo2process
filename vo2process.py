@@ -593,6 +593,14 @@ if __name__ == '__main__':
   plt.axhline(y=125, color='black', linestyle='--')
 
 
+
+  breaths_df = df[df['BreathMarker'] == True]
+  breaths_df['rf'] = 60000 / (breaths_df.index.astype(int).diff(periods=2)) # respiratory frequency (breaths per minute)
+  plt.figure(figsize=(8,4))
+  plt.scatter(breaths_df.index, breaths_df['rf'].rolling(window=5).mean(), color='green',  label='RF')
+  plt.title('Respiratory Frequency')
+
+
   plt.ioff()
   plt.show(block=True)
 
