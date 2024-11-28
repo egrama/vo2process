@@ -48,7 +48,7 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/esala2_p1.csv"
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/outsideair.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/old/esala3_obo_temp.csv'
 default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala4_nesomn_nov_15_24.csv"
-default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_dryair.csv"
+# default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_dryair.csv"
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/catevaresp.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
@@ -565,7 +565,10 @@ def our_plot(
         y = {**y_defaults, **y}
         y_values = y['y']
         if y['window'] > 0:
-            y_values = y_values.rolling(window=y['window'], center=True).mean()      
+            y_values = y_values.rolling(window=y['window'], center=True).mean()     
+        if len(y_values) < x.size: # index of main df has more values than data to be
+            new_index = pd.RangeIndex(start=0, stop=x.size)
+            y_values = y_values.reindex(new_index, fill_value=np.nan) # fill with nan up to main df size
         args =[x, y_values]
         kwargs = {'label':y['label'], 'color':y['color']}
         if y['method'] == 'scatter':
@@ -580,7 +583,7 @@ def our_plot(
             ax.yaxis.set_major_locator(plt.MultipleLocator(y['tick_interval']))
             plot_function = getattr(ax, y['method'])
             plot_function(*args, **kwargs)
-            ax.grid(True, alpha=0.3, axis='y', color=y["color"]) 
+            ax.grid(True, alpha=0.2, axis='y', color=y["color"]) 
             axes.append(ax)
     lines, labels = [], []
     for ax in axes:
@@ -588,7 +591,6 @@ def our_plot(
         lines.extend(l)
         labels.extend(lab)
     ax1.legend(lines, labels, loc='upper left')
-    plt.show()
 
 
 if __name__ == "__main__":
@@ -759,159 +761,92 @@ if __name__ == "__main__":
     plt.grid(True, alpha=0.5)
     plt.legend()
 
-    # vO2Max
-    # Define the rolling window size in seconds
-    window_size_sec = 30
-    roll_win_size = int((1000 / df["millis_diff"].mean() * window_size_sec))
-    plt.figure(figsize=(8, 4))
-    plt.plot(
-        df.index,
-        (df["volO2UsedStpd"] * 2 / subject_weight)
-        .rolling(window=roll_win_size, center=True).sum()
-        .rolling(window=roll_win_size).mean()
-        .rolling(window=10, center=True).mean(),
-        color = "coral",
-        label="vO2/min/kg"
-    )
-    plt.plot(
-        df.index,
-        (df["volO2UsedStpd"] * 2 / subject_weight)
-        .rolling(window=roll_win_size, center=True)
-        .sum()
-        .rolling(window=300)
-        .mean(),
-        color = "black",
-        label="vO2/min/kg",
-        alpha = 0.3
 
-    )
-    plt.title("vO2Max")
-    plt.grid(True, alpha=0.5)
-    plt.legend()
 
-    window_size_sec = 120
-    roll_win_size = int((1000 / df["millis_diff"].mean() * window_size_sec))
-
-    plt.figure(figsize=(8, 4))
-    plt.title("RER")
-    plt.plot(
-        df.index,
-        (df["volCo2OutStpd"].rolling(window=roll_win_size, center=True).sum())
-        / (df["volO2UsedStpd"].rolling(window=roll_win_size, center=True).sum())
-        .rolling(window=300, center=True)
-        .mean(),
-        "magenta",
-        label="RER",
-    )
-    plt.grid(True, alpha=0.5)
-    plt.legend()
-
-    window_size_sec = 60
-    roll_win_size = int((1000 / df["millis_diff"].mean() * window_size_sec))
-    plt.figure(figsize=(8, 4))
-    plt.title("Veq")
-    plt.plot(
-        df.index,
-        (df["volAirOut"].rolling(window=roll_win_size, center=True).sum())
-        / (df["volO2UsedStpd"].rolling(window=roll_win_size, center=True).sum())
-        .rolling(window=400, center=True)
-        .mean(),
-        "red",
-        label="O2"
-    )
-    plt.plot(
-        df.index,
-        (df["volAirOut"].rolling(window=roll_win_size, center=True).sum())
-        / (df["volCo2OutStpd"].rolling(window=roll_win_size, center=True).sum())
-        .rolling(window=400, center=True)
-        .mean(),
-        "blue",
-        label="CO2",
-    )
-    plt.grid(True, alpha=0.5)
 
     ### resample
     tddf = df.copy()
     tddf.index = pd.to_timedelta(tddf.index, unit="milliseconds")
     ares = tddf.resample("1s").sum()
 
-    plt.figure(figsize=(8, 4))
-    plt.title("VE(minute ventilation) STPD")
-    plt.plot(
-        ares.index,
-        ares["volAirOutStpd"]
-        .rolling(window="60s", min_periods=59)
-        .sum()
-        .rolling(window=10, center=True)
-        .mean(),
-        color="blue",
-        label="Out",
-    )
-    plt.plot(
-        ares.index,
-        ares["volAirInStpd"]
-        .rolling(window="60s", min_periods=59)
-        .sum()
-        .rolling(window=10, center=True)
-        .mean(),
-        color="red",
-        label="In",
-    )
-    plt.grid(True, alpha=0.5)
-    plt.legend()
-
-    plt.grid(True, alpha=0.5)
-    plt.legend()
-    plt.xlabel("Time (MM:SS)")  # Add x-axis label
-    plt.ylabel("volAirInStpd (processed)") # Add y-axis label (adjust as needed)
-    plt.title("Processed volAirInStpd Data") # Add title (adjust as needed)
 
     ares.set_index((ares.index - ares.index[0]).total_seconds(), inplace=True) # set index to seconds
-    plt.figure(figsize=(12, 6))
-    plt.plot(
-        ares.index,
-        (
-            ares["volAirOut"].rolling(window=60, min_periods=59, center=True).sum()
-            / ((ares["volO2UsedStpd"] +0.00000001).rolling(window=60, min_periods=59, center=True).sum())
-            .rolling(window=10)
-            .mean()
-        )
-        .rolling(window=10, center=True)
-        .mean(),
-        color="red",
-        label="VEqO2",
-    )
-    plt.plot(
-        ares.index,
-        (
-            ares["volAirOut"].rolling(window=40, center=True, min_periods=39).sum()
-            / (ares["volCo2OutStpd"]+0.00000001).rolling(window=40, center=True, min_periods=39).sum()
-        )
-        .rolling(window=10, center=True)
-        .mean(),
-        color="blue",
-        label="VEqCO2",
-    )
-    plt.legend(loc="lower right")
-    plt.xlabel("Time (Minutes)")
-    # Set ticks every 15 seconds and format as MM:SS
-    plt.gca().xaxis.set_major_locator(plt.MultipleLocator(60))
-    plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, pos: f"{int(x//60):02}"))
-    plt.grid(True, alpha=0.5, axis='x')
-    # HR
-    ax3 = plt.gca().twinx()
-    ax3.plot(
-      equipment_data.index,
-      equipment_data["hr"],
-      color="darkmagenta",
-      label="HR"
-    )
-    ax3.set_ylabel("HR")
-    ax3.legend(loc='upper right')
-    ax3.tick_params(axis='y', labelcolor='darkmagenta')  
-    ax3.yaxis.set_major_locator(plt.MultipleLocator(10))  # Set y ticks every 10
-    ax3.grid(True, alpha=0.5)
 
+    #Vo2Max
+    our_plot(
+        x=ares.index,
+        ydata=[
+            {
+                "y": (ares["volO2UsedStpd"] * 2 / subject_weight).rolling(window=30, min_periods=14, center=True).sum(),
+                "window": 10,
+                "label": "VO2MaxSmoothed (30s)",
+                "color": "coral"
+            },
+            {
+                "y": (ares["volO2UsedStpd"] * 4 / subject_weight).rolling(window=15, min_periods=14, center=True).sum(),
+                "window": 10,
+                "label": "VO2Max (15s)",
+                "color": "lightgray",
+                "method": "scatter"
+            },
+            {
+                "y": equipment_data.loc[:min(ares.index.max(), equipment_data.index.max())+1]['hr'],   # don't plot any HR data after the last mask datapoint
+                "window": 2,
+                "label": "HR",
+                "color": "darkmagenta",
+                "tick_interval": 10,
+                "tick_color": "darkmagenta"
+            }
+        ],
+        title="VO2Max"
+    )
+
+    # RER
+    our_plot(
+        x=ares.index,
+        ydata=[
+            {
+                "y": ares["volCo2OutStpd"].rolling(window=60, min_periods=59, center=True).sum() / 
+                     ares["volO2UsedStpd"].rolling(window=60, min_periods=59, center=True).sum(),  
+                "window": 15,
+                "label": "RER",
+                "color": "magenta"
+            }
+        ],
+        title="Respiratory Exchange Ratio (RER)"
+    )
+
+    # VolIn/VolOut
+    our_plot(
+        x=ares.index,
+        ydata=[
+            {
+                "y": ares["volAirInStpd"].rolling(window=60, min_periods=59, center=True).sum(),
+                "window": 10,
+                "label": "O2",
+                "color": "red",
+                "units": "ml"
+                
+            },
+            {
+                "y": ares["volAirOutStpd"].rolling(window=60, min_periods=59, center=True).sum(),
+                "window": 10,
+                "label": "CO2",
+                "color": "blue"
+            },
+            {
+                "y": equipment_data.loc[:ares.index.max()+1]['hr'],   # don't plot any HR data after the last mask datapoint
+                "window": 2,
+                "label": "HR",
+                "color": "darkmagenta",
+                "tick_interval": 10,
+                "tick_color": "darkmagenta"
+            }
+        ],
+        title="VolIn vs VolOut (STPD)",
+    )
+
+    # Minute Ventilation (VE)
     our_plot(
         x=ares.index,
         ydata=[
@@ -936,14 +871,34 @@ if __name__ == "__main__":
                 "label": "HR",
                 "color": "darkmagenta",
                 "tick_interval": 10,
-                "tick_color": "darkmagenta",
-                "method": "scatter"
+                "tick_color": "darkmagenta"
             }
         ],
-        title="VE(minute ventilation) STPD"
+        title="VE(minute ventilation)"
     )
+   
+    # plt.show()
 
-    plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # window_size_shift_ms = 30000 #ms
     window_size_shift_ms = 1000  # ms
