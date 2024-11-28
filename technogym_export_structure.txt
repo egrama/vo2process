@@ -1,3 +1,4 @@
+Bike data
 {
   "data": {
     "analitics": {
@@ -18,5 +19,27 @@
 2 = {'i': 2, 'pr': {'name': 'HDistance', 'um': 'Meter'}}
 3 = {'i': 3, 'pr': {'name': 'Level', 'um': 'Number'}}
 
+Treadmill data
+{
+  "data": {
+    "analitics": {
+      "hr": [
+        {"hr": 87, "t": 1},
+        {"hr": 88, "t": 2}
+      ]
+    },
+    "samples": [
+      {"vs": [0.0, 0.0, 0.0], "t": 1},
+      {"vs": [0.0, 0.0, 0.0], "t": 2}
+    ]
+  }
+}
 
-Time is in seconds
+0 = {'i': 0, 'pr': {'name': 'Speed', 'um': 'Km_h'}}
+1 = {'i': 1, 'pr': {'name': 'Grade', 'um': 'precent'}}
+2 = {'i': 2, 'pr': {'name': 'HDistance', 'um': 'Meter'}}
+
+
+
+
+Note: time is in seconds

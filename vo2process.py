@@ -12,8 +12,6 @@ from functools import partial
 import matplotlib.dates as mdates
 
 
-
-
 # Weight of the subject in kg
 subject_weight = 78
 # How many breaths to process in one group (inhale + exhale = 2 breaths)
@@ -50,11 +48,11 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/esala2_p1.csv"
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/outsideair.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/old/esala3_obo_temp.csv'
 default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala4_nesomn_nov_15_24.csv"
-
+default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_dryair.csv"
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/catevaresp.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
-bike_file = default_csv_file.split(".")[0] + ".json"
+equipment_file = default_csv_file.split(".")[0] + ".json"
 
 
 def setup_logging(log_level):
@@ -271,17 +269,25 @@ def import_technogym(file):
         data = json.load(f)
     hr_data = data["data"]["analitics"]["hr"]
     hr_df = pd.DataFrame(hr_data)
-
+    hr_df.set_index("t", inplace=True)
+    if data['data']['equipmentType'] == 'UprightBike':
+        headers = ["power", "rpm", "distance", "level", "t"]
+    elif data['data']['equipmentType'] == 'Treadmill':
+        headers = ["speed", "grade", "distance", "t"]
+    else:
+        sys.exit(f"Unsupported equipment type: data['data']['equipmentType']")
     equipment_data = data["data"]["analitics"]["samples"]
-    flattened_samples = []
-    for sample in equipment_data:
-        flattened_sample = sample["vs"] + [sample["t"]]
-        flattened_samples.append(flattened_sample)
-    quipment_df = pd.DataFrame(
-        flattened_samples, columns=["power", "rpm", "distance", "level", "t"]
-    )
-    merged_df = pd.merge(quipment_df, hr_df, on="t")
-    merged_df.set_index("t", inplace=True)
+
+    equipment_data_df = pd.DataFrame([{**dict(zip(headers, d['vs'])), 't': d['t']} for d in equipment_data])
+    equipment_data_df.set_index("t", inplace=True)
+    merged_df = pd.merge(hr_df, equipment_data_df, left_index=True, right_index=True, how='outer')
+    merged_df = merged_df.sort_index()
+    to_fill = headers[:-1] + ['hr']
+    merged_df[to_fill] = merged_df[to_fill].ffill()
+    full_index=pd.RangeIndex(start=merged_df.index.min(), stop=merged_df.index.max() + 1)
+    merged_df = merged_df.reindex(full_index) # some seconds are missing
+    merged_df = merged_df.ffill()
+
     return merged_df
 
 
@@ -527,6 +533,64 @@ def sanitize_data():
     df.loc[df["dpOut"] < flow_sensor_threshold, "dpOut"] = 0
 
 
+def our_plot(
+    x,
+    ydata,
+    figsize=(12, 6),
+    title="Graph",
+    xlabel="Time (MM)",
+    grid=True,
+    gridalpha=0.5,
+    gridaxis="both",
+):
+    y_defaults = {
+        "window": 0,
+        "label": 'some_data',
+        "color": 'blue',
+        "tick_interval": 0,
+        "tick_color": 'gray',
+        "method": 'plot'
+    }
+    plt.figure(figsize=figsize)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.legend(loc="lower right")
+    if grid:
+        plt.grid(True, alpha=gridalpha, axis=gridaxis)
+    plt.gca().xaxis.set_major_locator(plt.MultipleLocator(60)) # ticks every minute
+    plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, pos: f"{int(x//60):02}"))
+    ax1 = plt.gca()
+    axes = [ax1]
+    for i, y in enumerate(ydata):
+        y = {**y_defaults, **y}
+        y_values = y['y']
+        if y['window'] > 0:
+            y_values = y_values.rolling(window=y['window'], center=True).mean()      
+        args =[x, y_values]
+        kwargs = {'label':y['label'], 'color':y['color']}
+        if y['method'] == 'scatter':
+            kwargs['s'] = 10
+        if y['tick_interval'] ==  0:
+            plot_function = getattr(plt, y['method'])
+            plot_function(*args, **kwargs)
+        else: # separate y axis with ticks
+            ax = ax1.twinx()
+            # ax.spines['right'].set_position(('outward', 60 * (i + 1)))
+            ax.tick_params(axis='y', labelcolor=y["tick_color"])
+            ax.yaxis.set_major_locator(plt.MultipleLocator(y['tick_interval']))
+            plot_function = getattr(ax, y['method'])
+            plot_function(*args, **kwargs)
+            ax.grid(True, alpha=0.3, axis='y', color=y["color"]) 
+            axes.append(ax)
+    lines, labels = [], []
+    for ax in axes:
+        l, lab = ax.get_legend_handles_labels()
+        lines.extend(l)
+        labels.extend(lab)
+    ax1.legend(lines, labels, loc='upper left')
+    plt.show()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("csv_file", nargs="?", default=default_csv_file)
@@ -539,7 +603,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     setup_logging(args.log)
 
-    bike_data = import_technogym(bike_file)
+    equipment_data = import_technogym(equipment_file)
 
     # Read the CSV file
     csv_file = args.csv_file
@@ -724,7 +788,6 @@ if __name__ == "__main__":
     plt.title("vO2Max")
     plt.grid(True, alpha=0.5)
     plt.legend()
-    plt.show()
 
     window_size_sec = 120
     roll_win_size = int((1000 / df["millis_diff"].mean() * window_size_sec))
@@ -767,12 +830,10 @@ if __name__ == "__main__":
     )
     plt.grid(True, alpha=0.5)
 
-
-### resample
+    ### resample
     tddf = df.copy()
     tddf.index = pd.to_timedelta(tddf.index, unit="milliseconds")
     ares = tddf.resample("1s").sum()
-
 
     plt.figure(figsize=(8, 4))
     plt.title("VE(minute ventilation) STPD")
@@ -804,19 +865,6 @@ if __name__ == "__main__":
     plt.xlabel("Time (MM:SS)")  # Add x-axis label
     plt.ylabel("volAirInStpd (processed)") # Add y-axis label (adjust as needed)
     plt.title("Processed volAirInStpd Data") # Add title (adjust as needed)
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     ares.set_index((ares.index - ares.index[0]).total_seconds(), inplace=True) # set index to seconds
     plt.figure(figsize=(12, 6))
@@ -850,64 +898,52 @@ if __name__ == "__main__":
     plt.gca().xaxis.set_major_locator(plt.MultipleLocator(60))
     plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, pos: f"{int(x//60):02}"))
     plt.grid(True, alpha=0.5, axis='x')
-
     # HR
     ax3 = plt.gca().twinx()
     ax3.plot(
-      bike_data.index,
-      bike_data["hr"].rolling(window=8, center=True).mean(),
+      equipment_data.index,
+      equipment_data["hr"],
       color="darkmagenta",
       label="HR"
     )
     ax3.set_ylabel("HR")
     ax3.legend(loc='upper right')
-    ax3.tick_params(axis='y', labelcolor='darkmagenta')  # Change this to magenta
+    ax3.tick_params(axis='y', labelcolor='darkmagenta')  
     ax3.yaxis.set_major_locator(plt.MultipleLocator(10))  # Set y ticks every 10
     ax3.grid(True, alpha=0.5)
 
-
-
-    
-    plt.figure(figsize=(8, 4))
-    plt.plot(df.index, df["o2"], df["volAirOut"].rolling(window=27, center=True).sum() /
-             df["volO2UsedStpd"].rolling(window=27, center=True).sum(), 
-             "b", label="VEqO2"
-             )
-    
-
+    our_plot(
+        x=ares.index,
+        ydata=[
+            {
+                "y": (ares["volAirOut"].rolling(window=60, min_periods=59, center=True).sum() / 
+                (ares["volO2UsedStpd"] +0.00000001).rolling(window=60, min_periods=59, center=True).sum())
+                .rolling(window=10, center=True).mean(),
+                "window": 10,
+                "label": "VEqO2",
+                "color": "red"
+            },
+            {
+                "y": ares["volAirOut"].rolling(window=40, center=True, min_periods=39).sum() /
+                     (ares["volCo2OutStpd"]+0.00000001).rolling(window=40, center=True, min_periods=39).sum(),
+                "window": 10,
+                "label": "VEqCO2",
+                "color": "blue"
+            },
+            {
+                "y": equipment_data.loc[:ares.index.max()+1]['hr'],   # don't plot any HR data after the last mask datapoint
+                "window": 2,
+                "label": "HR",
+                "color": "darkmagenta",
+                "tick_interval": 10,
+                "tick_color": "darkmagenta",
+                "method": "scatter"
+            }
+        ],
+        title="VE(minute ventilation) STPD"
+    )
 
     plt.show()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     # window_size_shift_ms = 30000 #ms
     window_size_shift_ms = 1000  # ms
@@ -1040,8 +1076,12 @@ if __name__ == "__main__":
 
     plt.figure(figsize=(8, 4))
     plt.title("HR and Power")
-    plt.plot(bike_data.index, bike_data["power"], label="Power", color="grey")
-    plt.plot(bike_data.index, bike_data["hr"], label="HR", color="red")
+    if "power" in equipment_data.columns:
+        plt.plot(equipment_data.index, equipment_data["power"], label="Power", color="grey")
+    elif "speed" in equipment_data.columns:
+        plt.plot(equipment_data.index, equipment_data["speed"]*equipment_data["grade"], label="Speed", color="grey")
+
+    plt.plot(equipment_data.index, equipment_data["hr"], label="HR", color="red")
     plt.legend()
     plt.axhline(y=75, color="black", linestyle="--")
     plt.axhline(y=100, color="black", linestyle="--")
