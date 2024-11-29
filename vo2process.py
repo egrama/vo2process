@@ -48,11 +48,13 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/esala2_p1.csv"
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/outsideair.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/old/esala3_obo_temp.csv'
 default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala4_nesomn_nov_15_24.csv"
-# default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_dryair.csv"
+default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_dryair.csv"
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/catevaresp.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
 equipment_file = default_csv_file.split(".")[0] + ".json"
+
+plot_old_graphs = False
 
 
 def setup_logging(log_level):
@@ -675,7 +677,7 @@ if __name__ == "__main__":
         "volCo2OutStpd",
     ]
 
-    ### Start processing the data
+    ### Start data processing
     df.drop(['ts', 'type'], axis = 1, inplace=True)
     df.set_index("millis", inplace=True)
     min_index = df.index.min()
@@ -706,99 +708,60 @@ if __name__ == "__main__":
     df['breath_group'] = df['BreathMarker'].cumsum()
     breath_volumes = df.groupby('breath_group')['volAirOut'].sum()
     # make nan all values that are less than 400 (breath markers mark the shift from inhale to exhale)
-    # 500 ml should be less than minimum exhale volue, except perhaps at rest/sleep
+    # 400 ml should be less than minimum exhale volue, except perhaps at rest/sleep
     breath_volumes = breath_volumes.where(breath_volumes > 400) 
     df['volAirOutSum'] = df['breath_group'].map(breath_volumes) # map back to dataframe
     df.loc[~df['BreathMarker'], 'volAirOutSum'] = np.nan # keep the value only for breath markers
     df.drop('breath_group', axis=1, inplace=True)
     exhale_mask = (df["BreathMarker"] == True) & (df['volAirOutSum'].notna())
-
+    # O2 consumed
     df['volO2UsedStpd'] = df['volO2InStpd'] - df['volO2OutStpd']
-
-    ### End processing the data
-
-    # Braeath Volume
-    plt.figure(figsize=(8,4))
-    plt.title('Tidal Volume(ml)')
-    plt.scatter(df[exhale_mask].index, df[exhale_mask]['volAirOutSum'], label='Exhaled Air Vol', color='cyan', s=10)
-    plt.plot(df[exhale_mask].index, df[exhale_mask]['volAirOutSum'].rolling(window=15, center=True).mean(), color='blue', label='Air Vol Smoothed')
-    # for i in range(1000, 5000, 250):
-    #   plt.axhline(y=i, color='gray', linestyle='--')
-    plt.grid(True, alpha=0.5)
-    plt.legend()
-
-    # Respiratory Frequency
-    plt.figure(figsize=(8, 4))
-    plt.title('RF(Respiratory Frequency(hz))')
-    plt.plot(df[breath_mask].index, 60000 / df[breath_mask]['breathDuration'].rolling(window=50, center=True).mean(), color = 'magenta', label='Breaths per minute')
-    plt.legend()
-
-    # Volin/Volout
-    # Define the rolling window size in seconds
-    window_size_sec = 60
-    roll_win_size = int((1000 / df["millis_diff"].mean() * window_size_sec))
-    plt.figure(figsize=(8, 4))
-    plt.plot(
-        df.index,
-        df["volAirOutStpd"]
-        .rolling(window=roll_win_size, center=True)
-        .sum()
-        .rolling(window=300)
-        .mean(),
-        "blue",
-        label="volAirOutStpd",
-    )
-    plt.plot(
-        df.index,
-        df["volAirInStpd"]
-        .rolling(window=roll_win_size, center=True)
-        .sum()
-        .rolling(window=300)
-        .mean(),
-        "red",
-        label="volAirInStpd",
-    )
-    plt.grid(True, alpha=0.5)
-    plt.legend()
-
-
-
 
     ### resample
     tddf = df.copy()
     tddf.index = pd.to_timedelta(tddf.index, unit="milliseconds")
     ares = tddf.resample("1s").sum()
-
-
     ares.set_index((ares.index - ares.index[0]).total_seconds(), inplace=True) # set index to seconds
+    # Breath markers
+    ares_breath_mask = ares["BreathMarker"] == True
+    ares_exhale_mask = ((ares["BreathMarker"] == True) & (ares['volAirOutSum'] > 400 ))
+    ### End data processing
 
-    #Vo2Max
+    # Tidal Volume
     our_plot(
-        x=ares.index,
+        x=ares[ares_exhale_mask].index,
         ydata=[
             {
-                "y": (ares["volO2UsedStpd"] * 2 / subject_weight).rolling(window=30, min_periods=14, center=True).sum(),
-                "window": 10,
-                "label": "VO2MaxSmoothed (30s)",
-                "color": "coral"
+                "y": ares[ares_exhale_mask]["volAirOutSum"],
+                "window": 15,
+                "label": "Exhaled Air Smoothed",
+                "color": "blue"
             },
             {
-                "y": (ares["volO2UsedStpd"] * 4 / subject_weight).rolling(window=15, min_periods=14, center=True).sum(),
-                "window": 10,
-                "label": "VO2Max (15s)",
-                "color": "lightgray",
+                "y": ares[ares_exhale_mask]["volAirOutSum"],
+                "label": "Exhaled Air",
+                "color": "cyan",
                 "method": "scatter"
-            },
-            {
-                "y": equipment_data.loc[:min(ares.index.max(), equipment_data.index.max())+1]['hr'],   # don't plot any HR data after the last mask datapoint
-                "window": 2,
-                "label": "HR",
-                "color": "darkmagenta",
-                "tick_interval": 10,
-                "tick_color": "darkmagenta"
             }
         ],
-        title="VO2Max"
+        figsize=(8, 4),
+        title="Tidal Volume"
+    )
+    
+    # RF - Respiratory Frequency
+    our_plot(
+        x=ares[ares_breath_mask].index,
+        ydata=[
+            {
+                "y": (60000 / ares[ares_breath_mask]["breathDuration"]),
+                "window": 5,
+                "label": "Breaths per minute",
+                "color": "green",
+            },
+            
+        ],
+        figsize=(8, 4),
+        title="RF - Respiratory Frequency",
     )
 
     # RER
@@ -813,6 +776,7 @@ if __name__ == "__main__":
                 "color": "magenta"
             }
         ],
+        figsize=(8, 4),
         title="Respiratory Exchange Ratio (RER)"
     )
 
@@ -876,98 +840,40 @@ if __name__ == "__main__":
         ],
         title="VE(minute ventilation)"
     )
-   
-    # plt.show()
 
+    # Vo2Max
+    our_plot(
+        x=ares.index,
+        ydata=[
+            {
+                "y": (ares["volO2UsedStpd"] * 2 / subject_weight).rolling(window=30, min_periods=14, center=True).sum(),
+                "window": 10,
+                "label": "VO2MaxSmoothed (30s)",
+                "color": "coral"
+            },
+            {
+                "y": (ares["volO2UsedStpd"] * 4 / subject_weight).rolling(window=15, min_periods=14, center=True).sum(),
+                "window": 10,
+                "label": "VO2Max (15s)",
+                "color": "lightgray",
+                "method": "scatter"
+            },
+            {
+                "y": equipment_data.loc[:min(ares.index.max(), equipment_data.index.max())+1]['hr'],   # don't plot any HR data after the last mask datapoint
+                "window": 2,
+                "label": "HR",
+                "color": "darkmagenta",
+                "tick_interval": 10,
+                "tick_color": "darkmagenta"
+            }
+        ],
+        title="VO2Max"
+    )
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    # window_size_shift_ms = 30000 #ms
-    window_size_shift_ms = 1000  # ms
-
-    df["BreathMarker"] = False
-
-    computed_columns = [
-        "volAirIn",
-        "volAirOut",
-        "volO2InStpd",
-        "volO2OutStpd",
-       "volCo2OutStpd",
-       "mCo2OutStpd"
-    ]
-
-    df[computed_columns] = 0
-    breath_indexes, breath_indexes_ms = find_breath_limits(df)
-    df.loc[breath_indexes_ms, "BreathMarker"] = True
-    breath_mask = df["BreathMarker"] == True
-    # Up until here we have computed the breath limits
-    # and marked them in the originaldataframe
-
-    # Plot O2 before smoothing
-    plt.ion()
-    plt.figure(figsize=(8, 4))
-    plt.title("O2% initial")
-    plt.plot(df.index, df["o2"], "red", label="oxy")
-
-    # Smooth in place the O2 signal
-    # df['o2'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05).rolling(window=230, center=True).mean()
-    while o2_smoothing_factor > 0:
-        df["o2"] = df["o2"].rolling(window=430, center=True).mean()
-        o2_smoothing_factor -= 1
-
-    # Compute vol, o2, co2Stpd for each group of breaths
-    breath_indexes.append(df.index[-1])  # to process the last section ???
-    for i in range(step, len(breath_indexes_ms) - 1, step):
-        df.loc[breath_indexes_ms[i - step], computed_columns] = calc_vol_o2(
-            rho_in, rho_out, df.loc[breath_indexes_ms[i - step] : breath_indexes_ms[i]]
-        )
-
-    # Take out results in separate dataframe
-    rez_df = df[(df["BreathMarker"] == True) & (df["volO2InStpd"] > 0)]
-    breaths_df = df[df["BreathMarker"] == True]
-    breaths_df["rf"] = 60000 / (
-        breaths_df.index.astype(int).diff(periods=2)
-    )  # respiratory frequency (breaths per minute)
-
-    # Compute vo2max and other physiological parameters
-    rez_df["millis_diff"] = rez_df.index.to_series().diff()
-    rez_df["vO2"] = rez_df["volO2InStpd"] - rez_df["volO2OutStpd"]
-    rez_df["vO2/min/kg"] = (
-        (rez_df["volO2InStpd"] - rez_df["volO2OutStpd"]) * 60000 / rez_df["millis_diff"]
-    ) / subject_weight
-    rez_df["volDifStpd"] = normalize_to_stpd(
-        rez_df["volAirIn"], rho_in
-    ) - normalize_to_stpd(rez_df["volAirOut"], rho_out)
-    rez_df["volDifProc"] = rez_df["volDifStpd"] / (rez_df["volAirOut"] + 0.0001)
-    rez_df["Ve_Vo2"] = rez_df["volAirOut"] / (rez_df["vO2"] + 0.000001)
-    rez_df["Ve_Co2"] = rez_df["volAirOut"] / (rez_df["mCo2OutStpd"] + 0.000001)
-    rez_df["RER"] = (
-        rez_df["mCo2OutStpd"]
-        * (1 - rez_df["vO2/min/kg"] / 100)
-        / (rez_df["volO2InStpd"] - rez_df["volO2OutStpd"])
-    )  # added rough correction for bicarbonate buffering
-
-    # Plot the results
-    plt.figure(figsize=(8, 4))
-    plt.title("Differenial Pressure")
+      # Plot the results
+  
+    plt.figure(figsize=(18, 9))
+    plt.title("Pressure debug")
     plt.plot(df.index, df["oneDp"], "black", label="DP")
     plt.axhline(y=0, color="red", linestyle="--")
     plt.plot(df.index, df["o2ini"] - 15, "r", label="O2Initial")
@@ -977,164 +883,211 @@ if __name__ == "__main__":
     # plot a vertical line for each breath marker
     for i in range(0, len(breath_indexes_ms), 1):
         plt.axvline(x=breath_indexes_ms[i], color="gray", linestyle="--")
+    plt.legend(loc="upper left")
+    plt.tight_layout()
 
-    plt.figure(figsize=(8, 4))
-    plt.title("CO2Stpd")
-    plt.scatter(rez_df.index, rez_df["volCo2OutStpd"], color="blue", label="calculated_co2")
-    plt.plot(rez_df.index, rez_df["mCo2OutStpd"], "magenta", label="measured_co2")
-    plt.legend()
+  
+    plt.show()
 
-    # plt.figure(figsize=(8,4))
-    # plt.title('O2%')
-    # plt.plot(df.index, df['o2'], 'red',  label='oxy')
+    if plot_old_graphs:
+      # window_size_shift_ms = 30000 #ms
+      window_size_shift_ms = 1000  # ms
 
-    # plt.figure(figsize=(8,4))
-    # plt.title('RER')
-    # plt.scatter(rez_df.index, rez_df['RER'], label='RER', color='red')
-    # plt.axhline(y=0.5, color='gray', linestyle='--')
-    # plt.axhline(y=1, color='gray', linestyle='--')
-    # plt.axhline(y=1.5, color='gray', linestyle='--')
-    # # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
+      df["BreathMarker"] = False
 
-    # plt.figure(figsize=(8,4))
-    # plt.title('Ve_Co2')
-    # plt.scatter(rez_df.index, rez_df['Ve_Co2'], label='Ve_Co2', color='black')
-    # # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
+      computed_columns = [
+          "volAirIn",
+          "volAirOut",
+          "volO2InStpd",
+          "volO2OutStpd",
+        "volCo2OutStpd",
+        "mCo2OutStpd"
+      ]
 
-    # plt.figure(figsize=(8,4))
-    # plt.title('Ve_Vo2')
-    # plt.scatter(rez_df.index, rez_df['Ve_Vo2'], label='Ve_Vo2', color='green')
-    # # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
+      df[computed_columns] = 0
+      breath_indexes, breath_indexes_ms = find_breath_limits(df)
+      df.loc[breath_indexes_ms, "BreathMarker"] = True
+      breath_mask = df["BreathMarker"] == True
+      # Up until here we have computed the breath limits
+      # and marked them in the originaldataframe
 
-    # plt.figure(figsize=(8,4))
-    # plt.title('Breath volume(ml)')
-    # plt.scatter(rez_df.index, rez_df['volAirIn']/(step/2), label='Breath volume', color='blue')
-    # # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
-    # for i in range(1000, 5000, 250):
-    #   plt.axhline(y=i, color='gray', linestyle='--')
+      # Plot O2 before smoothing
+      plt.ion()
+      plt.figure(figsize=(8, 4))
+      plt.title("O2% initial")
+      plt.plot(df.index, df["o2"], "red", label="oxy")
 
-    # plt.figure(figsize=(8,4))
-    # plt.title('vO2/min/kg')
-    # plt.scatter(rez_df.index, rez_df['vO2/min/kg'], label='vO2/min/kg')
-    # # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
-    # plt.axhline(y=45, color='gray', linestyle='--')
-    # plt.axhline(y=50, color='gray', linestyle='--')
+      # Smooth in place the O2 signal
+      # df['o2'] = detect_and_flatten_spikes(df['o2'], window_size=258, spike_threshold=0.05).rolling(window=230, center=True).mean()
+      # while o2_smoothing_factor > 0:
+      #     df["o2"] = df["o2"].rolling(window=430, center=True).mean()
+      #     o2_smoothing_factor -= 1
 
-    filtered_temp = df[df['intTemp'] <= 60]
-    plt.figure(figsize=(8,4))
-    plt.title('IntTem/O2/C02conc')
-    plt.plot(filtered_temp.index, filtered_temp['intTemp'], label='intTemp', color='coral')
-    plt.plot(df.index, df['o2'], 'red',  label='oxy')
-    plt.plot(df.index, df['mCo2'], 'blue',  label='co2')
+      # Compute vol, o2, co2Stpd for each group of breaths
+      breath_indexes.append(df.index[-1])  # to process the last section ???
+      for i in range(step, len(breath_indexes_ms) - 1, step):
+          df.loc[breath_indexes_ms[i - step], computed_columns] = calc_vol_o2(
+              rho_in, rho_out, df.loc[breath_indexes_ms[i - step] : breath_indexes_ms[i]]
+          )
 
-    # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
+      # Take out results in separate dataframe
+      rez_df = df[(df["BreathMarker"] == True) & (df["volO2InStpd"] > 0)]
+      breaths_df = df[df["BreathMarker"] == True]
+      breaths_df["rf"] = 60000 / (
+          breaths_df.index.astype(int).diff(periods=2)
+      )  # respiratory frequency (breaths per minute)
 
-    plt.figure(figsize=(8, 4))
-    plt.title("HR and Power")
-    if "power" in equipment_data.columns:
-        plt.plot(equipment_data.index, equipment_data["power"], label="Power", color="grey")
-    elif "speed" in equipment_data.columns:
-        plt.plot(equipment_data.index, equipment_data["speed"]*equipment_data["grade"], label="Speed", color="grey")
+      # Compute vo2max and other physiological parameters
+      rez_df["millis_diff"] = rez_df.index.to_series().diff()
+      rez_df["vO2"] = rez_df["volO2InStpd"] - rez_df["volO2OutStpd"]
+      rez_df["vO2/min/kg"] = (
+          (rez_df["volO2InStpd"] - rez_df["volO2OutStpd"]) * 60000 / rez_df["millis_diff"]
+      ) / subject_weight
+      rez_df["volDifStpd"] = normalize_to_stpd(
+          rez_df["volAirIn"], rho_in
+      ) - normalize_to_stpd(rez_df["volAirOut"], rho_out)
+      rez_df["volDifProc"] = rez_df["volDifStpd"] / (rez_df["volAirOut"] + 0.0001)
+      rez_df["Ve_Vo2"] = rez_df["volAirOut"] / (rez_df["vO2"] + 0.000001)
+      rez_df["Ve_Co2"] = rez_df["volAirOut"] / (rez_df["mCo2OutStpd"] + 0.000001)
+      rez_df["RER"] = (
+          rez_df["mCo2OutStpd"]
+          * (1 - rez_df["vO2/min/kg"] / 100)
+          / (rez_df["volO2InStpd"] - rez_df["volO2OutStpd"])
+      )  # added rough correction for bicarbonate buffering
 
-    plt.plot(equipment_data.index, equipment_data["hr"], label="HR", color="red")
-    plt.legend()
-    plt.axhline(y=75, color="black", linestyle="--")
-    plt.axhline(y=100, color="black", linestyle="--")
-    plt.axhline(y=125, color="black", linestyle="--")
+      # Plot the results
+      plt.figure(figsize=(18, 9))
+      plt.title("Differential Pressure")
+      plt.plot(df.index, df["oneDp"], "black", label="DP")
+      plt.axhline(y=0, color="red", linestyle="--")
+      plt.plot(df.index, df["o2ini"] - 15, "r", label="O2Initial")
+      plt.plot(df.index, df["mCo2"], "blue", label="co2")
+      plt.plot(df.index, df["co2Temp"] - 20, "magenta", label="TempCo2")
+      plt.plot(df.index, df["co2Hum"] - 80, "cyan", label="HumCo2")
+      # plot a vertical line for each breath marker
+      for i in range(0, len(breath_indexes_ms), 1):
+          plt.axvline(x=breath_indexes_ms[i], color="gray", linestyle="--")
 
-    plt.figure(figsize=(8, 4))
-    plt.plot(
-        breaths_df.index,
-        breaths_df["rf"].rolling(window=5).mean(),
-        color="green",
-        label="RF",
-    )
-    plt.title("Respiratory Frequency")
+      plt.figure(figsize=(8, 4))
+      plt.title("CO2Stpd")
+      plt.scatter(rez_df.index, rez_df["volCo2OutStpd"], color="blue", label="calculated_co2")
+      plt.plot(rez_df.index, rez_df["mCo2OutStpd"], "magenta", label="measured_co2")
+      plt.legend()
 
-    # plt.ioff()
-    # plt.show(block=True)
+      filtered_temp = df[df['intTemp'] <= 60]
+      plt.figure(figsize=(8,4))
+      plt.title('IntTem/O2/C02conc')
+      plt.plot(filtered_temp.index, filtered_temp['intTemp'], label='intTemp', color='coral')
+      plt.plot(df.index, df['o2'], 'red',  label='oxy')
+      plt.plot(df.index, df['mCo2'], 'blue',  label='co2')
 
-    print("ha!")
+      # plt.subplots_adjust(left=0.045, right=0.99, top=0.99, bottom=0.056)
 
-    # Use rolling_window function with calc_vol_o2 and correct arguments
-    rolling_results = rolling_window(df, window_size_sec, calc_vol_o2, rho_in, rho_out)
+      plt.figure(figsize=(8, 4))
+      plt.title("HR and Power")
+      if "power" in equipment_data.columns:
+          plt.plot(equipment_data.index, equipment_data["power"], label="Power", color="grey")
+      elif "speed" in equipment_data.columns:
+          plt.plot(equipment_data.index, equipment_data["speed"]*equipment_data["grade"], label="Speed", color="grey")
 
-    # compute  vol_in / vo2
-    logging.info(f"Number of entries in rolling_results: {len(rolling_results)}")
+      plt.plot(equipment_data.index, equipment_data["hr"], label="HR", color="red")
+      plt.legend()
+      plt.axhline(y=75, color="black", linestyle="--")
+      plt.axhline(y=100, color="black", linestyle="--")
+      plt.axhline(y=125, color="black", linestyle="--")
 
-    # Process rolling results
-    max_vo2 = 0
-    max_vo2_start_time = None
-    start_times = []
-    vo2_values = []
-    ve_o2_values = []
-    ve_o2_out_values = []
-    vol_in_values = []
-    vol_out_values = []
-    co2_values = []
-    vco2_vo2_values = []
-    vi_vo2_values = []
-    ve_mco2_values = []
-    vmco2_vo2_values = []
+      plt.figure(figsize=(8, 4))
+      plt.plot(
+          breaths_df.index,
+          breaths_df["rf"].rolling(window=5).mean(),
+          color="green",
+          label="RF",
+      )
+      plt.title("Respiratory Frequency")
 
-    for start_time, result in rolling_results:
-        # TODO(): check if this is correct
-        vol_o2_in_stpd = result[2]
-        vol_o2_out_stpd = result[3]
-        vol_co2 = result[4]
-        vol_mco2 = result[5]
-        vol_o2 = vol_o2_in_stpd - vol_o2_out_stpd  # O2 in - O2 out (normalized to STPD)
-        # normalize vol_in to BTPS; result[0] * rho_in / rho_btps
-        ve_o2 = normalize_to_stpd(result[0], rho_in) / vol_o2
-        ve_o2_out = result[1] * rho_out / rho_btps / vol_o2
-        vol_in = normalize_to_stpd(result[0] / 1000.0, rho_in)
-        vol_out = normalize_to_stpd(result[1] / 1000.0, rho_out)
-        ve_m_co2 = normalize_to_stpd(result[0], rho_in) / vol_mco2
 
-        window_minutes = window_size_sec / 60  # Convert window size to minutes
-        vo2_per_minute = vol_o2 / window_minutes
+      print("ha!")
 
-        start_times.append(start_time)
-        vi_vo2_values.append(vol_in / vol_out)
-        vo2_values.append(vo2_per_minute / 80)
-        ve_o2_values.append(ve_o2)
-        ve_o2_out_values.append(ve_o2_out)
-        vol_in_values.append(vol_in)
-        vol_out_values.append(vol_out)
-        co2_values.append(vol_co2)
-        vco2_vo2_values.append(vol_co2 / vol_o2)
-        vmco2_vo2_values.append(vol_mco2 / vol_o2)
-        ve_mco2_values.append(ve_m_co2)
+      window_size_sec = 60  # 60 seconds
+      # Use rolling_window function with calc_vol_o2 and correct arguments
+      rolling_results = rolling_window(df, window_size_sec, calc_vol_o2, rho_in, rho_out)
 
-        if vo2_per_minute > max_vo2:
-            max_vo2 = vo2_per_minute
-            max_vo2_start_time = start_time
+      # compute  vol_in / vo2
+      logging.info(f"Number of entries in rolling_results: {len(rolling_results)}")
 
-    plt.ion()
+      # Process rolling results
+      max_vo2 = 0
+      max_vo2_start_time = None
+      start_times = []
+      vo2_values = []
+      ve_o2_values = []
+      ve_o2_out_values = []
+      vol_in_values = []
+      vol_out_values = []
+      co2_values = []
+      vco2_vo2_values = []
+      vi_vo2_values = []
+      ve_mco2_values = []
+      vmco2_vo2_values = []
 
-    # plot_time_series(vi_vo2_values, start_times, 'VIn/VOut', 'VIn/VOut' )
-    plot_time_series(vco2_vo2_values, start_times, "RER", "RER")
-    plot_time_series(vmco2_vo2_values, start_times, "mRER", "mRER")
+      for start_time, result in rolling_results:
+          # TODO(): check if this is correct
+          vol_o2_in_stpd = result[2]
+          vol_o2_out_stpd = result[3]
+          vol_co2 = result[4]
+          vol_mco2 = result[5]
+          vol_o2 = vol_o2_in_stpd - vol_o2_out_stpd  # O2 in - O2 out (normalized to STPD)
+          # normalize vol_in to BTPS; result[0] * rho_in / rho_btps
+          ve_o2 = normalize_to_stpd(result[0], rho_in) / vol_o2
+          ve_o2_out = result[1] * rho_out / rho_btps / vol_o2
+          vol_in = normalize_to_stpd(result[0] / 1000.0, rho_in)
+          vol_out = normalize_to_stpd(result[1] / 1000.0, rho_out)
+          ve_m_co2 = normalize_to_stpd(result[0], rho_in) / vol_mco2
 
-    plot_time_series(ve_mco2_values, start_times, "VE_mCO2", "VE_mCO2")
+          window_minutes = window_size_sec / 60  # Convert window size to minutes
+          vo2_per_minute = vol_o2 / window_minutes
 
-    # plot_time_series(co2_values, start_times, 'CO2', 'CO2' )
-    plot_time_series_multi(
-        start_times,
-        ("vol_in", vol_in_values),
-        ("vol_out", vol_out_values),
-        plot_fraction=1,
-        smoothing_window=10,
-        title="Volume In/Out Comparison",
-    )
-    # plot_time_series(vol_in_values, start_times, 'Vol_in', 'Vol_in' )
-    # plot_time_series(ve_o2_out_values, start_times, 'Ve_o2_out', 'Ve_o2_out')
-    plot_time_series(ve_o2_values, start_times, "Ve_o2", "Ve_o2")
-    plot_time_series(vo2_values, start_times, 'VO2', 'VO2')
-    print(f"Max VO2 (rolling, STPD): {round(max_vo2)} ml/min")
-    print(f"Max VO2 segment start time: {max_vo2_start_time} ms")
+          start_times.append(start_time)
+          vi_vo2_values.append(vol_in / vol_out)
+          vo2_values.append(vo2_per_minute / 80)
+          ve_o2_values.append(ve_o2)
+          ve_o2_out_values.append(ve_o2_out)
+          vol_in_values.append(vol_in)
+          vol_out_values.append(vol_out)
+          co2_values.append(vol_co2)
+          vco2_vo2_values.append(vol_co2 / vol_o2)
+          vmco2_vo2_values.append(vol_mco2 / vol_o2)
+          ve_mco2_values.append(ve_m_co2)
 
-    plt.ioff()
-    plt.show(block=True)
+          if vo2_per_minute > max_vo2:
+              max_vo2 = vo2_per_minute
+              max_vo2_start_time = start_time
 
-    egr_original_plot(rho_in, rho_out, df)
+      plt.ion()
+
+      # plot_time_series(vi_vo2_values, start_times, 'VIn/VOut', 'VIn/VOut' )
+      plot_time_series(vco2_vo2_values, start_times, "RER", "RER")
+      plot_time_series(vmco2_vo2_values, start_times, "mRER", "mRER")
+
+      plot_time_series(ve_mco2_values, start_times, "VE_mCO2", "VE_mCO2")
+
+      # plot_time_series(co2_values, start_times, 'CO2', 'CO2' )
+      plot_time_series_multi(
+          start_times,
+          ("vol_in", vol_in_values),
+          ("vol_out", vol_out_values),
+          plot_fraction=1,
+          smoothing_window=10,
+          title="Volume In/Out Comparison",
+      )
+      # plot_time_series(vol_in_values, start_times, 'Vol_in', 'Vol_in' )
+      # plot_time_series(ve_o2_out_values, start_times, 'Ve_o2_out', 'Ve_o2_out')
+      plot_time_series(ve_o2_values, start_times, "Ve_o2", "Ve_o2")
+      plot_time_series(vo2_values, start_times, 'VO2', 'VO2')
+      print(f"Max VO2 (rolling, STPD): {round(max_vo2)} ml/min")
+      print(f"Max VO2 segment start time: {max_vo2_start_time} ms")
+
+      plt.ioff()
+      plt.show(block=True)
+
+      egr_original_plot(rho_in, rho_out, df)
