@@ -13,7 +13,7 @@ import matplotlib.dates as mdates
 
 
 # Weight of the subject in kg
-subject_weight = 78
+subject_weight = 58
 # How many breaths to process in one group (inhale + exhale = 2 breaths)
 step = 14
 #########
@@ -52,6 +52,7 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_d
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/catevaresp.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
 equipment_file = default_csv_file.split(".")[0] + ".json"
 
 plot_old_graphs = False
@@ -212,8 +213,8 @@ def find_breath_limits(df, sg_win_lenght=11, sg_polyorder=2):
         dpSum = df.loc[indexes_ms[-1] :].head(i - indexes[-1])["oneDp"].sum()
         if (
             (savgol_filtered[i] * savgol_filtered[i + 1] < 0)
-            and (abs(dpSum) > 40)
-            and ((i - indexes[-1] > 20) or abs(dpSum) > 400)
+            and (abs(dpSum) > 20)
+            and ((i - indexes[-1] > 10) or abs(dpSum) > 200)
             and (dpSum * df.loc[indexes_ms[-1], "dpSum"] <= 0)
         ):
             df.loc[df.index[i], "dpSum"] = dpSum
@@ -635,7 +636,7 @@ if __name__ == "__main__":
 
     # Calculate rho values
     rho_in = calc_rho(measured_temp_c, measured_humid_percent, measured_pressure_hPa)
-    rho_out = calc_rho(35, 95, measured_pressure_hPa)
+    rho_out = calc_rho(30, 95, measured_pressure_hPa)
     rho_btps = calc_rho(37, 100, measured_pressure_hPa)
     # rho_out = rho_btps
 
@@ -787,7 +788,7 @@ if __name__ == "__main__":
             {
                 "y": ares["volAirInStpd"].rolling(window=60, min_periods=59, center=True).sum(),
                 "window": 10,
-                "label": "O2",
+                "label": "In",
                 "color": "red",
                 "units": "ml"
                 
@@ -795,7 +796,7 @@ if __name__ == "__main__":
             {
                 "y": ares["volAirOutStpd"].rolling(window=60, min_periods=59, center=True).sum(),
                 "window": 10,
-                "label": "CO2",
+                "label": "Out",
                 "color": "blue"
             },
             {
@@ -846,7 +847,7 @@ if __name__ == "__main__":
         x=ares.index,
         ydata=[
             {
-                "y": (ares["volO2UsedStpd"] * 2 / subject_weight).rolling(window=30, min_periods=14, center=True).sum(),
+                "y": ((ares["volO2UsedStpd"] * 2 / subject_weight).rolling(window=30, min_periods=14, center=True).sum() ),
                 "window": 10,
                 "label": "VO2MaxSmoothed (30s)",
                 "color": "coral"
@@ -876,10 +877,10 @@ if __name__ == "__main__":
     plt.title("Pressure debug")
     plt.plot(df.index, df["oneDp"], "black", label="DP")
     plt.axhline(y=0, color="red", linestyle="--")
-    plt.plot(df.index, df["o2ini"] - 15, "r", label="O2Initial")
+    plt.plot(df.index, df["o2ini"] - 15, "r", label="O2Ini - 15")
     plt.plot(df.index, df["mCo2"], "blue", label="co2")
-    plt.plot(df.index, df["co2Temp"] - 20, "magenta", label="TempCo2")
-    plt.plot(df.index, df["co2Hum"] - 80, "cyan", label="HumCo2")
+    plt.plot(df.index, df["co2Temp"] - 20, "magenta", label="TempCo - 20")
+    plt.plot(df.index, df["co2Hum"] - 80, "cyan", label="HumCo2 -80")
     # plot a vertical line for each breath marker
     for i in range(0, len(breath_indexes_ms), 1):
         plt.axvline(x=breath_indexes_ms[i], color="gray", linestyle="--")
@@ -887,7 +888,6 @@ if __name__ == "__main__":
     plt.tight_layout()
 
   
-    plt.show()
 
     if plot_old_graphs:
       # window_size_shift_ms = 30000 #ms
@@ -1049,7 +1049,7 @@ if __name__ == "__main__":
 
           start_times.append(start_time)
           vi_vo2_values.append(vol_in / vol_out)
-          vo2_values.append(vo2_per_minute / 80)
+          vo2_values.append(vo2_per_minute / subject_weight)
           ve_o2_values.append(ve_o2)
           ve_o2_out_values.append(ve_o2_out)
           vol_in_values.append(vol_in)
@@ -1087,7 +1087,10 @@ if __name__ == "__main__":
       print(f"Max VO2 (rolling, STPD): {round(max_vo2)} ml/min")
       print(f"Max VO2 segment start time: {max_vo2_start_time} ms")
 
-      plt.ioff()
-      plt.show(block=True)
+
 
       egr_original_plot(rho_in, rho_out, df)
+
+      
+    plt.ioff()
+    plt.show(block=True)
