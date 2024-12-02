@@ -13,7 +13,7 @@ import matplotlib.dates as mdates
 
 
 # Weight of the subject in kg
-subject_weight = 58
+subject_weight = 78
 # How many breaths to process in one group (inhale + exhale = 2 breaths)
 step = 14
 #########
@@ -52,7 +52,7 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_d
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/catevaresp.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
 equipment_file = default_csv_file.split(".")[0] + ".json"
 
 plot_old_graphs = False
@@ -545,6 +545,7 @@ def our_plot(
     grid=True,
     gridalpha=0.5,
     gridaxis="both",
+    millis=False
 ):
     y_defaults = {
         "window": 0,
@@ -560,8 +561,12 @@ def our_plot(
     plt.legend(loc="lower right")
     if grid:
         plt.grid(True, alpha=gridalpha, axis=gridaxis)
-    plt.gca().xaxis.set_major_locator(plt.MultipleLocator(60)) # ticks every minute
-    plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, pos: f"{int(x//60):02}"))
+    if millis:
+        minute = 60000
+    else:
+        minute = 60
+    plt.gca().xaxis.set_major_locator(plt.MultipleLocator(minute)) # ticks every minute
+    plt.gca().xaxis.set_major_formatter(plt.FuncFormatter(lambda x, pos: f"{int(x//minute):02}"))
     ax1 = plt.gca()
     axes = [ax1]
     for i, y in enumerate(ydata):
@@ -636,7 +641,7 @@ if __name__ == "__main__":
 
     # Calculate rho values
     rho_in = calc_rho(measured_temp_c, measured_humid_percent, measured_pressure_hPa)
-    rho_out = calc_rho(30, 95, measured_pressure_hPa)
+    rho_out = calc_rho(31, 94, measured_pressure_hPa)
     rho_btps = calc_rho(37, 100, measured_pressure_hPa)
     # rho_out = rho_btps
 
@@ -727,6 +732,7 @@ if __name__ == "__main__":
     ares_breath_mask = ares["BreathMarker"] == True
     ares_exhale_mask = ((ares["BreathMarker"] == True) & (ares['volAirOutSum'] > 400 ))
     ### End data processing
+
 
     # Tidal Volume
     our_plot(
@@ -847,9 +853,9 @@ if __name__ == "__main__":
         x=ares.index,
         ydata=[
             {
-                "y": ((ares["volO2UsedStpd"] * 2 / subject_weight).rolling(window=30, min_periods=14, center=True).sum() ),
+                "y": ((ares["volO2UsedStpd"] / subject_weight).rolling(window=60, min_periods=14, center=True).sum() ),
                 "window": 10,
-                "label": "VO2MaxSmoothed (30s)",
+                "label": "VO2MaxSmoothed (60s)",
                 "color": "coral"
             },
             {
@@ -871,8 +877,30 @@ if __name__ == "__main__":
         title="VO2Max"
     )
 
-      # Plot the results
-  
+
+    #@O2
+    our_plot(
+        x=df.index,
+        ydata=[
+            {
+                "y": df['o2'],
+                "window": 5,
+                "label": "Oxy",
+                "color": "red"
+            },
+                        {
+                "y": df['mCo2'],
+                "window": 5,
+                "label": "CO2",
+                "color": "blue"
+            }
+            
+        ],
+        figsize=(8, 4),
+        title="Gases",       
+        millis =  True
+    )
+
     plt.figure(figsize=(18, 9))
     plt.title("Pressure debug")
     plt.plot(df.index, df["oneDp"], "black", label="DP")
