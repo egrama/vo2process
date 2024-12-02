@@ -162,7 +162,7 @@ def calc_vol_o2(rhoIn, rhoOut, dframe):
 
 
 # similar to the old calc_vol_o2 but using pandas
-def calc_volumes(row, rhoIn, rhoOut):
+def calc_volumes(row, rhoIn):
     computed_columns = [
         "volAirIn",
         "volAirInStpd",
@@ -188,12 +188,13 @@ def calc_volumes(row, rhoIn, rhoOut):
         volO2OutStpd = 0
         volCo2OutStpd = 0
     else:
+        # rhoOut = calc_rho(row["co2Temp"], row["co2Hum"], measured_pressure_hPa)
         volAirOut = (
-            calc_volumetric_flow_egr(row["dpOut"], rhoOut)
+            calc_volumetric_flow_egr(row["dpOut"], row["rhoOut"])
             * row["millis_diff"]
             * vol_corr
         )
-        volAirOutStpd = normalize_to_stpd(volAirOut, rhoOut)
+        volAirOutStpd = normalize_to_stpd(volAirOut, row["rhoOut"])
         volO2OutStpd = volAirOutStpd * row["o2"] / 100
         volCo2OutStpd = volAirOutStpd * row["mCo2"] / 100
     return volAirIn, volAirInStpd, volAirOut, volAirOutStpd, volO2InStpd, volO2OutStpd, volCo2OutStpd
@@ -695,9 +696,10 @@ if __name__ == "__main__":
     df["oneDp"] = df["dpIn"] - df["dpOut"]  # signed diff pressure
     df["o2ini"] = df["o2"] # save the initial O2 values so 
     o2_max = df["o2"].max()
+    df["rhoOut"] = calc_rho(df["co2Temp"], df["co2Hum"], measured_pressure_hPa)
 
     # Compute gas volumes for each row
-    calc_volumes_wrapper = partial(calc_volumes, rhoIn=rho_in, rhoOut=rho_out)
+    calc_volumes_wrapper = partial(calc_volumes, rhoIn=rho_in)
     df[computed_columns] = df.apply(calc_volumes_wrapper, axis=1, result_type="expand")
 
     # Compute breath limits
@@ -822,16 +824,16 @@ if __name__ == "__main__":
         x=ares.index,
         ydata=[
             {
-                "y": (ares["volAirOut"].rolling(window=60, min_periods=59, center=True).sum() / 
-                (ares["volO2UsedStpd"] +0.00000001).rolling(window=60, min_periods=59, center=True).sum())
+                "y": (ares["volAirOut"]*(ares['rhoOut']/rhoBTPS)).rolling(window=60, min_periods=59, center=True).sum() / 
+                (ares["volO2UsedStpd"]*(ares['rhoOut']/rhoBTPS) +0.00000001).rolling(window=60, min_periods=59, center=True).sum()
                 .rolling(window=10, center=True).mean(),
                 "window": 10,
                 "label": "VEqO2",
                 "color": "red"
             },
             {
-                "y": ares["volAirOut"].rolling(window=40, center=True, min_periods=39).sum() /
-                     (ares["volCo2OutStpd"]+0.00000001).rolling(window=40, center=True, min_periods=39).sum(),
+                "y": (ares["volAirOut"]*(ares['rhoOut']/rhoBTPS)).rolling(window=40, center=True, min_periods=39).sum() /
+                     (ares["volCo2OutStpd"]*(ares['rhoOut']/rhoBTPS)+0.00000001).rolling(window=40, center=True, min_periods=39).sum(),
                 "window": 10,
                 "label": "VEqCO2",
                 "color": "blue"
