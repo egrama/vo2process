@@ -53,7 +53,7 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_d
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
-# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/aburi2.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/ghoxy1.csv'
 equipment_file = default_csv_file.split(".")[0] + ".json"
 
 plot_old_graphs = False
@@ -308,7 +308,7 @@ def split_csv(csv_file):
     for line_number, line in enumerate(lines, 1):
         fields = line.strip().split(",")
         if in_part1:
-            if len(fields) == 8 and fields[1].strip() == "TTPPH":
+            if "TTPPH" in fields[1].strip():
                 part1.append(line)
             elif len(fields) == 10 and fields[1].strip() == "mppoctht":
                 in_part1 = False
@@ -621,19 +621,26 @@ if __name__ == "__main__":
     csv_file = args.csv_file
     part1, part2 = split_csv(csv_file)
     ambient_data = StringIO("".join(part1))
+    names=["ts", "intTemp", "outTemp", "intPressure", "outPressure", "humidity"]
+    dtype={
+        "intTemp": np.float64,
+        "outTemp": np.float64,
+        "intPressure": np.float64,
+        "outPressure": np.float64,
+        "humidity": np.float64
+        }
+    if len(part1[0].split(",")) == 9: # support newly added O2 column
+        names.append("o2")
+        dtype["o2"] = np.float64
+        o2_in_ambient_data = True
+    else:
+        o2_in_ambient_data = False
     ambient_df = pd.read_csv(
         ambient_data,
-        names=["ts", "intTemp", "outTemp", "intPressure", "outPressure", "humidity"],
-        dtype={
-            "intTemp": np.float64,
-            "outTemp": np.float64,
-            "intPressure": np.float64,
-            "outPressure": np.float64,
-            "humidity": np.float64,
-        },
+        names=names,
+        dtype=dtype
     )
     ambient_df.set_index("ts", inplace=True)
-
     # Get tenmperature from the last entry in the ambient data
     measured_temp_c = ambient_df["outTemp"].iloc[-1]
     measured_humid_percent = ambient_df["humidity"].iloc[-1]
@@ -734,7 +741,10 @@ if __name__ == "__main__":
     df["millis_diff"] = df.index.to_series().diff() # time between samples
     df["oneDp"] = df["dpIn"] - df["dpOut"]  # signed diff pressure
     df["o2ini"] = df["o2"] # save the initial O2 values so 
-    o2_max = df["o2"].max()
+    if not o2_in_ambient_data:
+        o2_max = df["o2"].max()
+    else:
+        o2_max = ambient_df['o2'].tail(min(5, len(ambient_df))).mean() # average of last 5 values
     df["rhoOut"] = calc_rho(df["co2Temp"], df["co2Hum"], measured_pressure_hPa)
 
     # Compute gas volumes for each row
