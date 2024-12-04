@@ -13,7 +13,7 @@ import matplotlib.dates as mdates
 
 
 # Weight of the subject in kg
-subject_weight = 78
+subject_weight = 58
 # How many breaths to process in one group (inhale + exhale = 2 breaths)
 step = 14
 #########
@@ -52,7 +52,8 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_d
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/catevaresp.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
-# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/aburi2.csv'
 equipment_file = default_csv_file.split(".")[0] + ".json"
 
 plot_old_graphs = False
@@ -684,6 +685,44 @@ if __name__ == "__main__":
         "volCo2OutStpd",
     ]
 
+    # temp debug to_delete
+    # our_plot(
+    #     x=df.index,
+    #     ydata=[
+    #         {
+    #             "y": df["co2Hum"],
+    #             "window": 0,
+    #             "label": "Hum",
+    #             "color": "cyan"
+    #         },
+    #         {
+    #             "y": df["co2Temp"],
+    #             "window": 0,
+    #             "label": "Temp",
+    #             "color": "pink"
+    #         }
+    #     ],
+    #     figsize=(8, 4),
+    #     title="O2, Hum, Temp",
+    #     millis=True
+    # )
+
+    # our_plot(
+    #     x=df.index,
+    #     ydata=[
+    #         {
+    #             "y": df["o2"],
+    #             "window": 0,
+    #             "label": "oxy",
+    #             "color": "red",
+    #         }
+    #     ],
+    #     figsize=(8, 4),
+    #     title="O2",
+    #     millis=True
+    # )   
+    # plt.show()
+
     ### Start data processing
     df.drop(['ts', 'type'], axis = 1, inplace=True)
     df.set_index("millis", inplace=True)
@@ -757,21 +796,21 @@ if __name__ == "__main__":
         title="Tidal Volume"
     )
     
-    # RF - Respiratory Frequency
+    # RF
     our_plot(
-        x=ares[ares_breath_mask].index,
+        x=df.index,
         ydata=[
             {
-                "y": (60000 / ares[ares_breath_mask]["breathDuration"]),
-                "window": 5,
+                "y": df['BreathMarker'].rolling(window=int(60000/df['millis_diff'].mean()), center=True).sum()/2,
+                "window": 10,
                 "label": "Breaths per minute",
                 "color": "green",
-            },
-            
+            }
         ],
         figsize=(8, 4),
         title="RF - Respiratory Frequency",
-    )
+        millis=True
+    )    
 
     # RER
     our_plot(
@@ -845,6 +884,14 @@ if __name__ == "__main__":
                 "color": "darkmagenta",
                 "tick_interval": 10,
                 "tick_color": "darkmagenta"
+            },
+            {
+                "y": equipment_data.loc[:ares.index.max()+1]['speed'] * equipment_data.loc[:ares.index.max()+1]['grade'],   # don't plot any HR data after the last mask datapoint
+                "window": 2,
+                "label": "Speed*Grade",
+                "color": "black",
+                "tick_interval": 10,
+                "tick_color": "black"
             }
         ],
         title="VE(minute ventilation)"
