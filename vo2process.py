@@ -13,7 +13,7 @@ import matplotlib.dates as mdates
 
 
 # Weight of the subject in kg
-subject_weight = 58
+subject_weight = 50
 # How many breaths to process in one group (inhale + exhale = 2 breaths)
 step = 14
 #########
@@ -52,8 +52,9 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_d
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/catevaresp.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/ghoxy1.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/msala1.csv'
 equipment_file = default_csv_file.split(".")[0] + ".json"
 
 plot_old_graphs = False
@@ -270,11 +271,19 @@ def rolling_window(df, window_size_sec, func, *args):
 
 def import_technogym(file):
     # File structure is described in technogym_export_structure.txt
+    hr_data_in = False
     with open(file) as f:
         data = json.load(f)
-    hr_data = data["data"]["analitics"]["hr"]
-    hr_df = pd.DataFrame(hr_data)
-    hr_df.set_index("t", inplace=True)
+    if 'hr' in data['data']['analitics']:
+        hr_data = data["data"]["analitics"]["hr"]
+        hr_df = pd.DataFrame(hr_data)
+        hr_df.set_index("t", inplace=True)
+        hr_data_in = True
+    else:
+        hrd = pd.DataFrame(df['hr'])
+        hrd.index = pd.to_timedelta(hrd.index, unit="milliseconds")
+        hr_df = hrd.resample("1s").mean()
+        hr_df.set_index((hr_df.index - hr_df.index[0]).total_seconds(), inplace=True)
     if data['data']['equipmentType'] == 'UprightBike':
         headers = ["power", "rpm", "distance", "level", "t"]
     elif data['data']['equipmentType'] == 'Treadmill':
@@ -288,6 +297,7 @@ def import_technogym(file):
     merged_df = pd.merge(hr_df, equipment_data_df, left_index=True, right_index=True, how='outer')
     merged_df = merged_df.sort_index()
     to_fill = headers[:-1] + ['hr']
+    # if hr_data_in:
     merged_df[to_fill] = merged_df[to_fill].ffill()
     full_index=pd.RangeIndex(start=merged_df.index.min(), stop=merged_df.index.max() + 1)
     merged_df = merged_df.reindex(full_index) # some seconds are missing
@@ -310,7 +320,7 @@ def split_csv(csv_file):
         if in_part1:
             if "TTPPH" in fields[1].strip():
                 part1.append(line)
-            elif len(fields) == 10 and fields[1].strip() == "mppoctht":
+            elif 'mppoctht' in fields[1].strip():
                 in_part1 = False
                 part2.append(line)
             else:
@@ -319,7 +329,7 @@ def split_csv(csv_file):
                                  expected 8 for first section and 10 for the second"
                 )
         else:
-            if len(fields) == 10:
+            if 'mppoctht' in fields[1].strip():
                 part2.append(line)
             else:
                 raise ValueError(
@@ -327,12 +337,16 @@ def split_csv(csv_file):
                 )
 
     if not part2:
-        raise ValueError("Second section (with 6 fields) not found in CSV file")
+        raise ValueError("Second section  not found in CSV file")
 
+    if part2[-1].split(',')[1].strip() == "mppocthtr":
+        hr_data_in = True
+    else:
+        hr_data_in = False
     # logging.debug(f"Last line of part1: {part1[-1].strip()}")
     # logging.debug(f"First line of part2: {part2[0].strip()}")
 
-    return part1, part2
+    return part1, part2, hr_data_in
 
 
 def plot_time_series_multi(
@@ -615,11 +629,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     setup_logging(args.log)
 
-    equipment_data = import_technogym(equipment_file)
-
     # Read the CSV file
     csv_file = args.csv_file
-    part1, part2 = split_csv(csv_file)
+    part1, part2, hr_in_csv= split_csv(csv_file)
     ambient_data = StringIO("".join(part1))
     names=["ts", "intTemp", "outTemp", "intPressure", "outPressure", "humidity"]
     dtype={
@@ -648,6 +660,7 @@ if __name__ == "__main__":
         ambient_df["outPressure"].iloc[-1] + ambient_df["intPressure"].iloc[-1]
     ) / 2
 
+
     # Calculate rho values
     rho_in = calc_rho(measured_temp_c, measured_humid_percent, measured_pressure_hPa)
     rho_out = calc_rho(31, 94, measured_pressure_hPa)
@@ -655,32 +668,40 @@ if __name__ == "__main__":
     # rho_out = rho_btps
 
     csv_data = StringIO("".join(part2))
+    df_names=[
+        "ts",
+        "type",
+        "millis",
+        "dpIn",
+        "dpOut",
+        "o2",
+        "mCo2",
+        "co2Temp",
+        "co2Hum",
+        "intTemp",
+    ]
+    df_dtype={
+        "millis": np.float64,
+        "dpIn": np.float64,
+        "dpOut": np.float64,
+        "o2": np.float64,
+        "mCo2": np.float64,
+        "co2Temp": np.float64,
+        "co2Hum": np.float64,
+        "intTemp": np.float64,
+    }
+
+    if hr_in_csv:
+        df_names.append("hr")
+        df_dtype["hr"] = np.float64
 
     df = pd.read_csv(
         csv_data,
-        names=[
-            "ts",
-            "type",
-            "millis",
-            "dpIn",
-            "dpOut",
-            "o2",
-            "mCo2",
-            "co2Temp",
-            "co2Hum",
-            "intTemp",
-        ],
-        dtype={
-            "millis": np.float64,
-            "dpIn": np.float64,
-            "dpOut": np.float64,
-            "o2": np.float64,
-            "mCo2": np.float64,
-            "co2Temp": np.float64,
-            "co2Hum": np.float64,
-            "intTemp": np.float64,
-        },
+        names=df_names,
+        dtype=df_dtype
     )
+
+
 
     computed_columns = [
         "volAirIn",
@@ -735,6 +756,7 @@ if __name__ == "__main__":
     df.set_index("millis", inplace=True)
     min_index = df.index.min()
     df.index = df.index - min_index # start with 0
+    equipment_data = import_technogym(equipment_file)
     df["dpSum"] = 0
     # Sanitixe data
     # sanitize_data()
@@ -857,7 +879,7 @@ if __name__ == "__main__":
                 "color": "blue"
             },
             {
-                "y": equipment_data.loc[:ares.index.max()+1]['hr'],   # don't plot any HR data after the last mask datapoint
+                "y": equipment_data.loc[:ares.index.max()]['hr'],   # don't plot any HR data after the last mask datapoint
                 "window": 2,
                 "label": "HR",
                 "color": "darkmagenta",
@@ -888,7 +910,7 @@ if __name__ == "__main__":
                 "color": "blue"
             },
             {
-                "y": equipment_data.loc[:ares.index.max()+1]['hr'],   # don't plot any HR data after the last mask datapoint
+                "y": equipment_data.loc[:ares.index.max()]['hr'],   # don't plot any HR data after the last mask datapoint
                 "window": 2,
                 "label": "HR",
                 "color": "darkmagenta",
@@ -896,7 +918,7 @@ if __name__ == "__main__":
                 "tick_color": "darkmagenta"
             },
             {
-                "y": equipment_data.loc[:ares.index.max()+1]['speed'] * equipment_data.loc[:ares.index.max()+1]['grade'],   # don't plot any HR data after the last mask datapoint
+                "y": equipment_data.loc[:ares.index.max()]['speed'] * equipment_data.loc[:ares.index.max()]['grade'],   # don't plot any HR data after the last mask datapoint
                 "window": 2,
                 "label": "Speed*Grade",
                 "color": "black",
@@ -925,7 +947,7 @@ if __name__ == "__main__":
                 "method": "scatter"
             },
             {
-                "y": equipment_data.loc[:min(ares.index.max(), equipment_data.index.max())+1]['hr'],   # don't plot any HR data after the last mask datapoint
+                "y": equipment_data.loc[:min(ares.index.max(), equipment_data.index.max())]['hr'],   # don't plot any HR data after the last mask datapoint
                 "window": 2,
                 "label": "HR",
                 "color": "darkmagenta",
