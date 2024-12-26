@@ -13,7 +13,7 @@ import matplotlib.dates as mdates
 
 
 # Weight of the subject in kg
-subject_weight = 50
+subject_weight = 92
 # How many breaths to process in one group (inhale + exhale = 2 breaths)
 step = 14
 #########
@@ -42,6 +42,8 @@ vol_corr = 0.8264
 
 flow_sensor_threshold = 0.32
 
+equipment_type = '' # UprightBike or Treadmill so far
+
 default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/1-rest-emil_961hPa_25g.csv"
 default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/vlad_sala_2.csv"
 default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/esala2_p1.csv"
@@ -52,9 +54,10 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_d
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/catevaresp.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
-# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/ghoxy1.csv'
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/msala1.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/msala1.csv'
+default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/vsalaro1.csv'
 equipment_file = default_csv_file.split(".")[0] + ".json"
 
 plot_old_graphs = False
@@ -216,8 +219,8 @@ def find_breath_limits(df, sg_win_lenght=11, sg_polyorder=2):
         dpSum = df.loc[indexes_ms[-1] :].head(i - indexes[-1])["oneDp"].sum()
         if (
             (savgol_filtered[i] * savgol_filtered[i + 1] < 0)
-            and (abs(dpSum) > 20)
-            and ((i - indexes[-1] > 10) or abs(dpSum) > 200)
+            and (abs(dpSum) > 10)
+            and ((i - indexes[-1] > 10) or abs(dpSum) > 100)
             and (dpSum * df.loc[indexes_ms[-1], "dpSum"] <= 0)
         ):
             df.loc[df.index[i], "dpSum"] = dpSum
@@ -271,6 +274,7 @@ def rolling_window(df, window_size_sec, func, *args):
 
 def import_technogym(file):
     # File structure is described in technogym_export_structure.txt
+    global equipment_type
     hr_data_in = False
     with open(file) as f:
         data = json.load(f)
@@ -286,8 +290,10 @@ def import_technogym(file):
         hr_df.set_index((hr_df.index - hr_df.index[0]).total_seconds(), inplace=True)
     if data['data']['equipmentType'] == 'UprightBike':
         headers = ["power", "rpm", "distance", "level", "t"]
+        equipment_type = "UprightBike"
     elif data['data']['equipmentType'] == 'Treadmill':
         headers = ["speed", "grade", "distance", "t"]
+        equipment_type = "Treadmill"
     else:
         sys.exit(f"Unsupported equipment type: data['data']['equipmentType']")
     equipment_data = data["data"]["analitics"]["samples"]
@@ -300,6 +306,7 @@ def import_technogym(file):
     # if hr_data_in:
     merged_df[to_fill] = merged_df[to_fill].ffill()
     full_index=pd.RangeIndex(start=merged_df.index.min(), stop=merged_df.index.max() + 1)
+    merged_df = merged_df[~merged_df.index.duplicated(keep='first')] # bike sometimes records duplicates in index
     merged_df = merged_df.reindex(full_index) # some seconds are missing
     merged_df = merged_df.ffill()
 
@@ -890,7 +897,14 @@ if __name__ == "__main__":
         title="VolIn vs VolOut (STPD)",
     )
 
+    if equipment_type == "Treadmill":
+        dificulty = {"main":"speed", "second": "grade"}
+    if equipment_type == "UprightBike":
+        dificulty = {"main":"power", "second": "rpm"}
+
+
     # Minute Ventilation (VE)
+
     our_plot(
         x=ares.index,
         ydata=[
@@ -904,7 +918,7 @@ if __name__ == "__main__":
             },
             {
                 "y": (ares["volAirOut"]*(ares['rhoOut']/rhoBTPS)).rolling(window=40, center=True, min_periods=39).sum() /
-                     (ares["volCo2OutStpd"]*(ares['rhoOut']/rhoBTPS)+0.00000001).rolling(window=40, center=True, min_periods=39).sum(),
+                    (ares["volCo2OutStpd"]*(ares['rhoOut']/rhoBTPS)+0.00000001).rolling(window=40, center=True, min_periods=39).sum(),
                 "window": 10,
                 "label": "VEqCO2",
                 "color": "blue"
@@ -918,9 +932,9 @@ if __name__ == "__main__":
                 "tick_color": "darkmagenta"
             },
             {
-                "y": equipment_data.loc[:ares.index.max()]['speed'] * equipment_data.loc[:ares.index.max()]['grade'],   # don't plot any HR data after the last mask datapoint
+                "y": equipment_data.loc[:ares.index.max()][dificulty['main']],   # don't plot any HR data after the last mask datapoint  * equipment_data.loc[:ares.index.max()]['grade']
                 "window": 2,
-                "label": "Speed*Grade",
+                "label": dificulty['main'],
                 "color": "black",
                 "tick_interval": 10,
                 "tick_color": "black"
@@ -928,6 +942,7 @@ if __name__ == "__main__":
         ],
         title="VE(minute ventilation)"
     )
+
 
     # Vo2Max
     our_plot(
@@ -937,7 +952,8 @@ if __name__ == "__main__":
                 "y": ((ares["volO2UsedStpd"] / subject_weight).rolling(window=60, min_periods=14, center=True).sum() ),
                 "window": 10,
                 "label": "VO2MaxSmoothed (60s)",
-                "color": "coral"
+                "color": "coral",
+                "tick_color": "coral"
             },
             {
                 "y": (ares["volO2UsedStpd"] * 4 / subject_weight).rolling(window=15, min_periods=14, center=True).sum(),
@@ -950,9 +966,25 @@ if __name__ == "__main__":
                 "y": equipment_data.loc[:min(ares.index.max(), equipment_data.index.max())]['hr'],   # don't plot any HR data after the last mask datapoint
                 "window": 2,
                 "label": "HR",
-                "color": "darkmagenta",
+                "color": "red",
                 "tick_interval": 10,
-                "tick_color": "darkmagenta"
+                "tick_color": "red"
+            },
+            {
+                "y": equipment_data.loc[:ares.index.max()][[dificulty['main']]],  
+                "window": 2,
+                "label": dificulty['main'],
+                "color": "black",
+                "tick_interval": 10,
+                "tick_color": "black"
+            },
+            {
+                "y": equipment_data.loc[:ares.index.max()][[dificulty['second']]],  
+                "window": 2,
+                "label": dificulty['second'],
+                "color": "cyan",
+                "tick_interval": 10,
+                "tick_color": "cyan"
             }
         ],
         title="VO2Max"
