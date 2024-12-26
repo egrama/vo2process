@@ -50,11 +50,11 @@ default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/esala2_p1.csv"
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/outsideair.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/old/esala3_obo_temp.csv'
 default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala4_nesomn_nov_15_24.csv"
-default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_dryair.csv"
+# default_csv_file = "/Users/egrama/vo2max/vo2process/in_files/newco2/esala5_run_dryair.csv"
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/catevaresp.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/10pompeout.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/inceputexhale.csv'
-default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
+# default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/asala1.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/ghoxy1.csv'
 # default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/msala1.csv'
 default_csv_file = '/Users/egrama/vo2max/vo2process/in_files/newco2/vsalaro1.csv'
@@ -557,6 +557,12 @@ def sanitize_data():
     # Set to 0 negative pressure values and values lower than sensor threshold
     df.loc[df["dpIn"] < flow_sensor_threshold, "dpIn"] = 0
     df.loc[df["dpOut"] < flow_sensor_threshold, "dpOut"] = 0
+    low_o2_values = df['o2'].between(0, 2).sum()
+    if low_o2_values > 0:
+        logging.warning(f"Found {low_o2_values} O2 values between 0 and 2")
+        print(f"Found {low_o2_values} O2 values between 0 and 2")
+        df['o2'] = df['o2'].mask((df['o2'] >= 0) & (df['o2'] <= 2)).ffill()
+
 
 
 def our_plot(
@@ -766,7 +772,7 @@ if __name__ == "__main__":
     equipment_data = import_technogym(equipment_file)
     df["dpSum"] = 0
     # Sanitixe data
-    # sanitize_data()
+    sanitize_data()
     df["millis_diff"] = df.index.to_series().diff() # time between samples
     df["oneDp"] = df["dpIn"] - df["dpOut"]  # signed diff pressure
     df["o2ini"] = df["o2"] # save the initial O2 values so 
